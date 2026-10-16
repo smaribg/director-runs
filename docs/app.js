@@ -110,7 +110,7 @@ async function loadData() {
   const old = new Map(directors.map(x => [x.id, x]));
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
   entries.clear();
-  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0 });
+  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, at: r.updated_at });
   render();
   for (const dir of directors) if (!dir.films) fillFilms(dir);
 }
@@ -126,7 +126,7 @@ async function fillFilms(dir) {
 
 async function saveEntry(movieId, patch) {
   const cur = entries.get(movieId) || { watched: false, note: "", hidden: false, rating: 0 };
-  const next = { ...cur, ...patch };
+  const next = { ...cur, ...patch, at: new Date().toISOString() };
   const before = completedIds();
   entries.set(movieId, next);
   render();
@@ -215,11 +215,53 @@ function progressOf(d) {
 }
 function completedIds() { return new Set(directors.filter(d => progressOf(d).done).map(d => d.id)); }
 
+let view = "runs";   // "runs" (director cards) or "trophies"
+
 function shelf() {
   const won = directors.filter(d => progressOf(d).done);
-  $("shelf").hidden = !won.length;
-  $("shelf").innerHTML = `<span class="shelf-label">Trophies</span>` + won.map(d =>
-    `<span class="trophy" title="${esc(d.name)}: every film watched">${TROPHY}<span>${esc(d.name)}</span></span>`).join("");
+  const b = $("trophyBtn");
+  b.hidden = !directors.length;
+  b.innerHTML = view === "trophies"
+    ? `<span aria-hidden="true">‹</span> Back to directors`
+    : `${TROPHY}<span class="tb-label">Trophies</span><b>${won.length}</b>`;
+  b.setAttribute("aria-label", view === "trophies" ? "Back to directors" : `Trophies, ${won.length} won`);
+  if (view === "trophies") renderTrophies(won);
+}
+
+function renderTrophies(won) {
+  const fmt = iso => iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
+  if (!won.length) {
+    const next = directors.map(d => ({ d, ...progressOf(d) })).filter(x => x.d.films && x.released.length)
+      .sort((a, b) => (a.released.length - a.watched) - (b.released.length - b.watched))[0];
+    $("trophyView").innerHTML = `<div class="empty"><strong>No trophies yet</strong>Watch every film by a director to win one.${
+      next ? `<br>Closest: ${esc(next.d.name)}, ${next.released.length - next.watched} to go.` : ""}</div>`;
+    return;
+  }
+  $("trophyView").innerHTML = `<h2 class="tv-title">Trophy room</h2><div class="trophies">${won.map(d => {
+    const { released, avg } = progressOf(d);
+    const top = topFilm(released);
+    const fav = released.map(f => ({ f, r: entries.get(f.id)?.rating || 0 })).filter(x => x.r).sort((a, b) => b.r - a.r || b.f.votes - a.f.votes)[0];
+    const at = released.map(f => entries.get(f.id)?.at || "").sort().pop();
+    return `<article class="tcard">
+      <div class="tbanner">${top ? `<img src="${IMG}w780${top.backdrop}" alt="">` : ""}</div>
+      <div class="medal">${TROPHY}</div>
+      <div class="tbody">
+        <h3>${esc(d.name)}</h3>
+        <div class="tmeta">${released.length} films${at ? ` · completed ${fmt(at)}` : ""}</div>
+        ${avg ? `<div class="tavg">${starsHtml(Math.round(avg))}<span>${avg.toFixed(1)} average</span></div>` : ""}
+        ${fav ? `<div class="tfav"><span>Favourite</span>${esc(fav.f.t)} <small>${fav.f.y}</small></div>` : ""}
+      </div>
+    </article>`;
+  }).join("")}</div>`;
+}
+
+function setView(v) {
+  view = v;
+  const t = v === "trophies";
+  $("addPanel").hidden = t; $("rowwrap").hidden = t; $("trophyView").hidden = !t;
+  shelf();
+  if (!t) updateNav();
+  window.scrollTo({ top: 0 });
 }
 
 let toastTimer = null;
@@ -418,7 +460,9 @@ function closeSheet() {
 function showScreen(html) {
   $("screen").innerHTML = html;
   const app = !html;
-  $("addPanel").hidden = !app; $("rowwrap").hidden = !app; $("footer").hidden = !app && !user;
+  $("addPanel").hidden = !app || view === "trophies"; $("rowwrap").hidden = !app || view === "trophies";
+  $("trophyView").hidden = !app || view !== "trophies"; $("footer").hidden = !app && !user;
+  if (!app) $("trophyBtn").hidden = true;
 }
 
 function screenConfig() {
@@ -472,6 +516,7 @@ async function start() {
 // ---------- Events ----------
 document.addEventListener("click", e => {
   if (e.target.id === "sheetBack") return closeSheet();
+  if (e.target.closest?.("#toast")) { $("toast").hidden = true; return setView("trophies"); }
   const t = e.target.closest("button");
   if (!t) return;
   if (t.dataset.pick) { const p = searchResults[+t.dataset.pick]; return p && addDirector(p.name, p.ids); }
@@ -483,6 +528,7 @@ document.addEventListener("click", e => {
   if (t.dataset.tick) { const id = +t.dataset.tick; return saveEntry(id, { watched: !entries.get(id)?.watched }); }
   if (t.id === "sheetTick" && open) return saveEntry(open.movie, { watched: !entries.get(open.movie)?.watched });
   if (t.id === "sheetDone") return closeSheet();
+  if (t.id === "trophyBtn") return setView(view === "trophies" ? "runs" : "trophies");
   // Rating a film marks it watched; tapping the current rating clears it.
   if (t.dataset.rate && open) { const n = +t.dataset.rate, cur = entries.get(open.movie)?.rating || 0;
     return saveEntry(open.movie, n === cur ? { rating: 0 } : { rating: n, watched: true }); }
@@ -496,7 +542,7 @@ document.addEventListener("click", e => {
   }
 });
 document.addEventListener("keydown", e => {
-  if (!open) return;
+  if (!open) { if (e.key === "Escape" && view === "trophies") setView("runs"); return; }
   if (e.key === "Escape") closeSheet();
   if (e.key === "Enter" && e.target.id === "noteInput" && !e.shiftKey) { e.preventDefault(); closeSheet(); }
 });
