@@ -774,25 +774,27 @@ async function loadRecs() {
   await pool(seeds, 4, async s => {
     const r = await tmdb(`/movie/${s.f.id}/recommendations`);
     (r.results || []).forEach((m, i) => {
-      if (known.has(m.id)) return;
+      // Skip obscure titles: TMDB's recommendations get noisy below a few hundred votes.
+      if (known.has(m.id) || (m.vote_count || 0) < 800) return;
       const x = movies.get(m.id) || { id: m.id, score: 0, because: new Map() };
-      const w = rating(s) * (1 - i / 40);
+      const w = rating(s) * (1 - i / 40) * Math.log10(m.vote_count);
       x.score += w; x.because.set(s.f.t, (x.because.get(s.f.t) || 0) + w);
       movies.set(m.id, x);
     });
   });
   const people = new Map();
-  await pool([...movies.values()].sort((a, b) => b.score - a.score).slice(0, 16), 4, async m => {
+  await pool([...movies.values()].sort((a, b) => b.score - a.score).slice(0, 30), 5, async m => {
     const c = await tmdb(`/movie/${m.id}/credits`);
-    for (const p of (c.crew || []).filter(p => p.job === "Director")) {
+    for (const p of (c.crew || []).filter(p => p.job === "Director" && p.known_for_department === "Directing")) {
       if (have.has(p.id)) continue;
-      const x = people.get(p.id) || { id: p.id, name: p.name, profile: p.profile_path || "", score: 0, because: new Map() };
-      x.score += m.score;
+      const x = people.get(p.id) || { id: p.id, name: p.name, profile: p.profile_path || "", score: 0, hits: 0, because: new Map() };
+      x.score += m.score; x.hits++;
       for (const [t, w] of m.because) x.because.set(t, (x.because.get(t) || 0) + w);
       people.set(p.id, x);
     }
   });
-  recs = [...people.values()].sort((a, b) => b.score - a.score).slice(0, 6).map(p => ({
+  // Directors behind several of the recommended films rank first.
+  recs = [...people.values()].sort((a, b) => b.hits - a.hits || b.score - a.score).slice(0, 6).map(p => ({
     id: p.id, name: p.name, profile: p.profile,
     because: [...p.because].sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0])
   }));
