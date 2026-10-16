@@ -36,8 +36,10 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: e
 .brand h1 { font-family: var(--marquee); font-weight: 900; font-size: clamp(2.6rem, 8vw, 4rem); line-height: .9; letter-spacing: .01em; text-transform: uppercase; margin: 0; }
 .brand h1 span { color: var(--accent); }
 .brand p { margin: 8px 0 0; color: var(--muted); }
-.stats { display: flex; gap: 22px; font-family: var(--mono); font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-.stats b { display: block; font-family: var(--marquee); font-size: 1.9rem; letter-spacing: 0; color: var(--fg); font-weight: 800; line-height: 1; }
+.shelf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.shelf-label { font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.trophy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 8px; border-radius: 99px; border: 1px solid rgba(240,181,74,.45); background: linear-gradient(180deg, rgba(240,181,74,.16), rgba(240,181,74,.04)); font-size: .8rem; font-weight: 600; }
+.trophy svg { width: 18px; height: 18px; color: var(--accent); filter: drop-shadow(0 0 6px rgba(240,181,74,.5)); }
 
 /* Setup and sign-in panels */
 .panel { margin: 24px var(--side); max-width: 520px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 12px; }
@@ -56,8 +58,6 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: e
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn:disabled { opacity: .55; cursor: default; }
-.toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; cursor: pointer; padding: 0 4px; }
-.toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
 .results { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .result { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); white-space: nowrap; flex: none; text-align: left; }
 .result:hover { border-color: var(--accent); }
@@ -92,7 +92,29 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: e
 .banner h2 { margin: 0; font-family: var(--marquee); font-weight: 800; font-size: 2.1rem; line-height: .92; text-transform: uppercase; text-wrap: balance; min-width: 0; }
 .count { font-family: var(--mono); font-size: .82rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
 .count b { font-family: var(--marquee); font-weight: 800; font-size: 1.6rem; color: var(--accent); }
-.complete { display: inline-block; margin-top: 2px; font-family: var(--body); font-size: .66rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border-radius: 99px; padding: 2px 8px; }
+.badge { position: absolute; top: 12px; right: 12px; z-index: 1; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 5px 7px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: .74rem; font-weight: 700; letter-spacing: .04em; box-shadow: 0 0 22px -2px rgba(240,181,74,.7); }
+.badge svg { width: 18px; height: 18px; }
+.card.done { border-color: rgba(240,181,74,.55); }
+.stars { font-size: .7rem; letter-spacing: 1px; color: var(--accent); }
+.stars i { font-style: normal; color: rgba(243,237,228,.25); }
+.stars.on-poster { position: absolute; right: 5px; bottom: 5px; background: rgba(14,13,12,.75); padding: 1px 5px; border-radius: 99px; font-size: .58rem; letter-spacing: 0; }
+.rate { display: flex; gap: 2px; }
+.rate button { border: none; background: none; padding: 2px; font-size: 1.7rem; line-height: 1; color: var(--line); transition: color .12s, transform .12s; }
+.rate button.on { color: var(--accent); }
+@media (hover: hover) {
+  .rate button:hover { transform: scale(1.12); }
+  .rate:hover button { color: var(--accent); }
+  .rate button:hover ~ button { color: var(--line); }
+}
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--accent); box-shadow: 0 18px 50px -10px rgba(0,0,0,.8), 0 0 40px -10px rgba(240,181,74,.6); width: max-content; max-width: calc(100% - 32px); font-size: .86rem; color: var(--muted); }
+.toast[hidden] { display: none; }
+.toast b { display: block; font-family: var(--marquee); font-weight: 800; font-size: 1.3rem; text-transform: uppercase; color: var(--fg); line-height: 1; margin-bottom: 2px; }
+.toast-icon { width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+.toast-icon svg { width: 26px; height: 26px; }
+.toast.show { animation: pop .5s cubic-bezier(.2, 1.4, .4, 1); }
+.toast.show .toast-icon { animation: spin .8s .1s ease-out; }
+@keyframes pop { from { transform: translateX(-50%) translateY(30px) scale(.9); opacity: 0; } }
+@keyframes spin { from { transform: rotate(-30deg) scale(.6); } }
 
 .strip { margin: 4px 16px 0; background: #050504; border-radius: 4px; padding: 5px 4px; position: relative; }
 .strip::before, .strip::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; background-image: radial-gradient(circle, #3a342c 0.9px, transparent 1.2px); background-size: 6px 2px; }
@@ -152,7 +174,7 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: e
 }
 footer { padding-block: 8px 28px; color: var(--muted); font-size: .78rem; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 footer img { height: 12px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
 <body>
@@ -161,7 +183,7 @@ footer img { height: 12px; }
     <h1>Director <span>Runs</span></h1>
     <p>Work through a filmography, one frame at a time.</p>
   </div>
-  <div class="stats" id="stats" hidden></div>
+  <div class="shelf" id="shelf" hidden></div>
 </header>
 
 <main id="screen"></main>
@@ -170,7 +192,6 @@ footer img { height: 12px; }
   <div class="add-row">
     <input class="field" id="search" type="search" placeholder="Add any director, e.g. Agnès Varda" autocomplete="off" aria-label="Search directors">
     <button class="btn" id="randomBtn" type="button">Pick one at random</button>
-    <label class="toggle"><input type="checkbox" id="hideWatched"> Hide watched</label>
   </div>
   <div id="suggest"></div>
   <div class="results" id="results"></div>
@@ -188,6 +209,7 @@ footer img { height: 12px; }
 </footer>
 
 <div class="sheet-back" id="sheetBack" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>

@@ -37,7 +37,6 @@ let sb = null, user = null;
 let tmdbToken = null;
 let directors = [];            // rows from Supabase plus .films (loaded from TMDB) and .error
 const entries = new Map();     // movie_id -> {watched, note}
-let hideWatched = local.get("dr-hide", false);
 let suggestion = null;         // {name, person_ids, films, loading}
 let searchSeq = 0, searchResults = [], lookupMsg = "";
 let open = null;               // {dir, movie}
@@ -111,7 +110,7 @@ async function loadData() {
   const old = new Map(directors.map(x => [x.id, x]));
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
   entries.clear();
-  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden });
+  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0 });
   render();
   for (const dir of directors) if (!dir.films) fillFilms(dir);
 }
@@ -126,12 +125,16 @@ async function fillFilms(dir) {
 }
 
 async function saveEntry(movieId, patch) {
-  const cur = entries.get(movieId) || { watched: false, note: "", hidden: false };
+  const cur = entries.get(movieId) || { watched: false, note: "", hidden: false, rating: 0 };
   const next = { ...cur, ...patch };
+  const before = completedIds();
   entries.set(movieId, next);
   render();
+  const fresh = directors.find(d => completedIds().has(d.id) && !before.has(d.id));
+  if (fresh) celebrate(fresh);
   const row = { user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() };
-  if ("hidden" in patch || next.hidden) row.hidden = next.hidden;   // works before the hidden column is added
+  if ("hidden" in patch || next.hidden) row.hidden = next.hidden;
+  if ("rating" in patch || next.rating) row.rating = next.rating || null;   // only sent when used, so older databases keep working
   const { error } = await sb.from("entries").upsert(row);
   if (error) { entries.set(movieId, cur); render(); }
 }
@@ -201,20 +204,38 @@ async function repairDirector(dir) {
 const isHidden = f => !!entries.get(f.id)?.hidden;
 const showRemoved = new Set();   // director ids whose removed films are shown
 
-function stats() {
-  let all = 0, seen = 0;
-  const counted = new Set();
-  for (const d of directors) for (const f of d.films || []) {
-    if (isHidden(f) || counted.has(f.id)) continue;
-    counted.add(f.id); all++;
-    if (entries.get(f.id)?.watched) seen++;
-  }
-  $("stats").hidden = !directors.length;
-  $("stats").innerHTML = `<div><b>${directors.length}</b>directors</div><div><b>${seen}</b>watched</div><div><b>${all - seen}</b>to go</div>`;
+const TROPHY = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10v2h4v3a5 5 0 0 1-4.6 5A6 6 0 0 1 13 15.9V18h3a2 2 0 0 1 2 2v2H6v-2a2 2 0 0 1 2-2h3v-2.1A6 6 0 0 1 7.6 12 5 5 0 0 1 3 7V4h4V2Zm0 4H5v1a3 3 0 0 0 2 2.8V6Zm10 0v3.8A3 3 0 0 0 19 7V6h-2Z"/></svg>`;
+
+function progressOf(d) {
+  const released = (d.films || []).filter(f => !isHidden(f));
+  const watched = released.filter(f => entries.get(f.id)?.watched);
+  const rated = watched.map(f => entries.get(f.id).rating).filter(Boolean);
+  return { released, watched: watched.length, done: !!d.films && released.length > 0 && watched.length === released.length,
+           avg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0 };
+}
+function completedIds() { return new Set(directors.filter(d => progressOf(d).done).map(d => d.id)); }
+
+function shelf() {
+  const won = directors.filter(d => progressOf(d).done);
+  $("shelf").hidden = !won.length;
+  $("shelf").innerHTML = `<span class="shelf-label">Trophies</span>` + won.map(d =>
+    `<span class="trophy" title="${esc(d.name)}: every film watched">${TROPHY}<span>${esc(d.name)}</span></span>`).join("");
 }
 
+let toastTimer = null;
+function celebrate(d) {
+  const { released, avg } = progressOf(d);
+  const t = $("toast");
+  t.innerHTML = `<span class="toast-icon">${TROPHY}</span><span><b>Trophy unlocked</b>${esc(d.name)} · all ${released.length} films${avg ? ` · avg ★ ${avg.toFixed(1)}` : ""}</span>`;
+  t.hidden = false; t.classList.remove("show"); void t.offsetWidth; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
+}
+
+const starsHtml = (n, cls = "") => n ? `<span class="stars ${cls}" aria-label="Rated ${n} of 5">${"★".repeat(n)}<i>${"★".repeat(5 - n)}</i></span>` : "";
+
 function render() {
-  stats();
+  shelf();
   const cards = $("cards");
   if (!directors.length) {
     cards.innerHTML = `<div class="empty"><strong>No directors yet</strong>Search above or pick one at random to start your first run.</div>`;
@@ -223,11 +244,9 @@ function render() {
   const scroll = cards.scrollLeft;
   cards.innerHTML = directors.map(d => {
     const all = d.films || [];
-    const released = all.filter(f => !isHidden(f));
+    const { released, watched, done, avg } = progressOf(d);
     const removed = all.length - released.length;
     const films = showRemoved.has(d.id) ? all : released;
-    const watched = released.filter(f => entries.get(f.id)?.watched).length;
-    const done = released.length > 0 && watched === released.length;
     const top = topFilm(released);
     const banner = top
       ? `<img src="${IMG}w780${top.backdrop}" alt="Still from ${esc(top.t)}">`
@@ -237,20 +256,21 @@ function render() {
     else if (!d.films) body = `<p class="skeleton">Loading films…</p>`;
     else body = `<div class="posters">${films.map(f => {
       const e = entries.get(f.id) || {}, w = !!e.watched, h = !!e.hidden;
-      if (hideWatched && w && !h) return "";
       return `<div class="poster${w ? " watched" : ""}${h ? " removed" : ""}">
         <button class="art" type="button" data-open="${d.id}|${f.id}" aria-label="${esc(f.t)} (${f.y})">
           ${posterHtml(f)}
           ${h ? `<span class="flag">Removed</span>` : e.note ? `<span class="flag">Note</span>` : f.doc ? `<span class="flag">Doc</span>` : ""}
+          ${h ? "" : starsHtml(e.rating, "on-poster")}
         </button>
         ${h ? "" : `<button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>`}
         <div class="lbl">${esc(f.t)} <span>${f.y}</span></div>
       </div>`;
     }).join("") || `<p class="hint" style="grid-column:1/-1">All watched. Nice run.</p>`}</div>`;
-    return `<article class="card">
+    return `<article class="card${done ? " done" : ""}">
       <div class="banner">${banner}
         <div class="cap"><h2>${esc(d.name)}</h2>
-          <div class="count"><b>${watched}</b> / ${released.length}${done ? '<br><span class="complete">Complete</span>' : ""}</div></div>
+          <div class="count"><b>${watched}</b> / ${released.length}</div></div>
+        ${done ? `<span class="badge" title="Every film watched">${TROPHY}${avg ? `★ ${avg.toFixed(1)}` : "Complete"}</span>` : ""}
       </div>
       <div class="strip" role="progressbar" aria-valuemin="0" aria-valuemax="${released.length}" aria-valuenow="${watched}" aria-label="${esc(d.name)} progress">
         <div class="frames">${released.map(f => `<span class="frame${entries.get(f.id)?.watched ? " on" : ""}" title="${esc(f.t)} (${f.y})"></span>`).join("")}</div>
@@ -362,6 +382,8 @@ function openSheet(dirId, movieId) {
     <div class="body">
       <span class="eyebrow">${esc(d.name)} · ${f.y}</span>
       <h3 id="sheetTitle">${esc(f.t)}</h3>
+      ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
+        `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
       ${e.hidden ? `<p class="hint">Removed from this list, so it doesn't count toward progress.</p>` : `
       <label class="small" for="noteInput">Your note</label>
@@ -378,7 +400,10 @@ function openSheet(dirId, movieId) {
 }
 function renderSheetState() {
   const b = $("sheetTick");
-  if (b && open) b.textContent = entries.get(open.movie)?.watched ? "✓ Watched" : "Mark as watched";
+  if (!open) return;
+  const e = entries.get(open.movie) || {};
+  if (b) b.textContent = e.watched ? "✓ Watched" : "Mark as watched";
+  document.querySelectorAll(".rate button").forEach(x => x.classList.toggle("on", +x.dataset.rate <= (e.rating || 0)));
 }
 function closeSheet() {
   if (!open) return;
@@ -458,6 +483,9 @@ document.addEventListener("click", e => {
   if (t.dataset.tick) { const id = +t.dataset.tick; return saveEntry(id, { watched: !entries.get(id)?.watched }); }
   if (t.id === "sheetTick" && open) return saveEntry(open.movie, { watched: !entries.get(open.movie)?.watched });
   if (t.id === "sheetDone") return closeSheet();
+  // Rating a film marks it watched; tapping the current rating clears it.
+  if (t.dataset.rate && open) { const n = +t.dataset.rate, cur = entries.get(open.movie)?.rating || 0;
+    return saveEntry(open.movie, n === cur ? { rating: 0 } : { rating: n, watched: true }); }
   if (t.id === "sheetHide" && open) { const id = open.movie, hide = !entries.get(id)?.hidden; closeSheet(); return saveEntry(id, { hidden: hide }); }
   if (t.dataset.showremoved) { const id = t.dataset.showremoved; showRemoved.has(id) ? showRemoved.delete(id) : showRemoved.add(id); return render(); }
   if (t.id === "signOutBtn") return sb.auth.signOut().then(() => location.reload());
@@ -472,8 +500,6 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") closeSheet();
   if (e.key === "Enter" && e.target.id === "noteInput" && !e.shiftKey) { e.preventDefault(); closeSheet(); }
 });
-$("hideWatched").checked = hideWatched;
-$("hideWatched").addEventListener("change", e => { hideWatched = e.target.checked; local.set("dr-hide", hideWatched); render(); });
 $("search").addEventListener("input", onSearch);
 $("cards").addEventListener("scroll", updateNav, { passive: true });
 addEventListener("resize", updateNav);
