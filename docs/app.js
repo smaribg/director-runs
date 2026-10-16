@@ -470,20 +470,25 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
     </div>
     <button class="big" type="button" id="sheetPoster" aria-label="Choose a different poster">${posterHtml(f, "w500")}<span class="big-hint">Change poster</span></button>
     <div class="body">
-      <h3 id="sheetTitle">${esc(f.t)} <span class="year">${f.y}</span></h3>
-      <div class="film-meta" id="sheetMeta">${lbLink(f.id)}</div>
-      ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
-        `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
+      <div class="head">
+        <h3 id="sheetTitle">${esc(f.t)}</h3>
+        <div class="film-meta"><span>${f.y}</span><span id="sheetRuntime"></span><span class="links" id="sheetLinks">${lbLink(f.id)}</span></div>
+      </div>
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
       <div class="spacer"></div>
-      ${e.hidden ? `<p class="hint">Removed from this list, so it doesn't count toward progress.</p>` : `
-      <label class="small" for="noteInput">Your note</label>
-      <textarea id="noteInput" maxlength="500" placeholder="A short thought on it">${esc(e.note || "")}</textarea>`}
-      <div class="actions">
-        ${e.hidden ? "<span></span>" : `<button class="btn" type="button" id="sheetTick"></button>`}
+      ${e.hidden ? `<p class="hint take">Removed from this list, so it doesn't count toward progress.</p>` : `
+      <section class="take" aria-label="Your take">
+        <div class="take-row">
+          <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
+            `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>
+          <button class="watch-toggle" type="button" id="sheetTick"></button>
+        </div>
+        <textarea id="noteInput" maxlength="500" placeholder="Your note: a short thought on it" aria-label="Your note">${esc(e.note || "")}</textarea>
+      </section>`}
+      <div class="sheet-foot">
+        <button class="linkbtn" type="button" id="sheetHide">${e.hidden ? "Put back in the list" : "Remove from list"}</button>
         <button class="btn primary" type="button" id="sheetDone">Done</button>
       </div>
-      <button class="linkbtn sheet-remove" type="button" id="sheetHide">${e.hidden ? "Put back in the list" : "Remove from list"}</button>
     </div></div>`;
   $("sheetBack").hidden = false;
   renderSheetState();
@@ -498,11 +503,8 @@ async function fillSheetMeta(f) {
   try { m = await detailsOf(f.id); } catch { return; }
   if (open?.movie !== f.id) return;
   const rt = m.rt ? `${Math.floor(m.rt / 60) ? Math.floor(m.rt / 60) + "h " : ""}${m.rt % 60}m` : "";
-  $("sheetMeta").innerHTML = [
-    rt ? `<span class="runtime">${rt}</span>` : "",
-    m.imdb ? `<a class="site-icon" href="https://www.imdb.com/title/${m.imdb}/" target="_blank" rel="noopener" title="IMDb" aria-label="Open on IMDb">${ICON_IMDB}</a>` : "",
-    lbLink(f.id)
-  ].join("");
+  $("sheetRuntime").textContent = rt;
+  $("sheetLinks").innerHTML = (m.imdb ? `<a class="site-icon" href="https://www.imdb.com/title/${m.imdb}/" target="_blank" rel="noopener" title="IMDb" aria-label="Open on IMDb">${ICON_IMDB}</a>` : "") + lbLink(f.id);
 }
 
 // Poster picker: every poster TMDB has for the film, most liked first.
@@ -552,7 +554,7 @@ function renderSheetState() {
   const b = $("sheetTick");
   if (!open) return;
   const e = entries.get(open.movie) || {};
-  if (b) b.textContent = e.watched ? "✓ Watched" : "Mark as watched";
+  if (b) { b.textContent = e.watched ? "✓ Watched" : "Mark as watched"; b.setAttribute("aria-pressed", !!e.watched); }
   document.querySelectorAll(".rate button").forEach(x => x.classList.toggle("on", +x.dataset.rate <= (e.rating || 0)));
 }
 function closeSheet() {

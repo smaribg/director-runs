@@ -172,7 +172,6 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .linkbtn:hover, .linkbtn.armed { color: var(--danger); }
 .linkbtn.armed { font-weight: 600; }
 .linkbtn[data-showremoved]:hover { color: var(--fg); }
-.sheet-remove { align-self: flex-start; }
 .skeleton { padding: 30px 16px; color: var(--muted); text-align: center; font-size: .9rem; }
 
 .empty { flex: 0 0 min(100%, 520px); padding: 40px 20px; color: var(--muted); border: 1px dashed var(--line); border-radius: 20px; text-align: center; }
@@ -191,8 +190,17 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .big-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); white-space: nowrap; font-size: .74rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; background: rgba(14,13,12,.8); opacity: 0; transition: opacity .15s; }
 .sheet .big:hover .big-hint, .sheet .big:focus-visible .big-hint { opacity: 1; }
 @media (hover: none) { .big-hint { opacity: .85; } }
-.film-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .82rem; color: var(--muted); min-height: 28px; }
-.runtime { font-family: var(--mono); font-size: .74rem; margin-right: 4px; }
+.sheet .head { display: flex; flex-direction: column; gap: 10px; }
+.film-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 0; font-family: var(--mono); font-size: .8rem; color: var(--muted); min-height: 24px; }
+.film-meta > span:not(:empty) + span:not(:empty)::before { content: "·"; margin: 0 10px; }
+.film-meta .links { display: inline-flex; gap: 8px; margin-left: auto; }
+.film-meta .links::before { display: none; }
+.take { padding-top: 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.take-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.watch-toggle { border: 1px solid var(--line); background: var(--raise); border-radius: 99px; padding: 8px 14px; font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.watch-toggle:hover { border-color: var(--accent); }
+.watch-toggle[aria-pressed="true"] { background: rgba(240,181,74,.14); border-color: rgba(240,181,74,.6); color: var(--accent); }
+.sheet-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .site-icon { display: inline-flex; border-radius: 5px; opacity: .85; transition: opacity .15s, transform .15s; }
 .site-icon:hover, .site-icon:focus-visible { opacity: 1; transform: translateY(-1px); }
 .site-icon svg { width: 44px; height: 22px; display: block; }
@@ -212,13 +220,10 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .sheet .body > * { flex: none; }
 .sheet .eyebrow { font-family: var(--mono); font-size: .76rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .sheet h3 { margin: 0; font-family: var(--marquee); font-weight: 800; font-size: 3rem; line-height: .92; text-transform: uppercase; text-wrap: balance; overflow-wrap: anywhere; }
-.sheet h3 .year { font-family: var(--mono); font-weight: 400; font-size: .95rem; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
 .sheet .body > .overview { flex: 0 1 auto; min-height: 3em; overflow-y: auto; font-size: .92rem; line-height: 1.5; color: var(--muted); margin: 0; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .sheet .body > .spacer { flex: 1 1 0; }
 .sheet textarea { font: inherit; font-size: .92rem; width: 100%; min-height: 100px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); resize: vertical; }
 .sheet textarea:focus { border-color: var(--accent); outline: none; }
-.sheet label.small { font-size: .8rem; color: var(--muted); margin-bottom: -8px; }
-.sheet .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
 @media (max-width: 640px) {
   .sheet-back { align-items: flex-end; padding: 0; }
   .sheet { grid-template-columns: 120px 1fr; gap: 12px 16px; padding: 16px 18px max(20px, env(safe-area-inset-bottom, 0px)); border-radius: 24px 24px 0 0; height: min(86vh, 700px); }
@@ -267,6 +272,6 @@ footer img { height: 12px; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
