@@ -117,7 +117,10 @@ async function loadData() {
 }
 
 async function fillFilms(dir) {
-  try { dir.films = await loadFilms(dir.person_ids); dir.error = null; }
+  try {
+    dir.films = await loadFilms(dir.person_ids); dir.error = null;
+    if (!dir.films.length) await repairDirector(dir);
+  }
   catch (err) { dir.error = err.status === 401 ? "TMDB rejected the key." : "Couldn't load films. Reload to try again."; }
   render();
 }
@@ -166,10 +169,30 @@ async function seedIfNeeded(settings) {
   }
 }
 
+// Prefer an exact name match who works as a director; TMDB's search is fuzzy and
+// can rank a namesake (or a near-empty duplicate profile) above the real person.
+const normName = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 async function findDirector(name) {
   const r = await tmdb("/search/person", { query: name });
   const hits = r.results || [];
-  return hits.find(p => p.known_for_department === "Directing") || hits[0] || null;
+  const exact = hits.filter(p => normName(p.name) === normName(name));
+  const directing = p => p.known_for_department === "Directing";
+  return exact.find(directing) || exact[0] || hits.find(directing) || hits[0] || null;
+}
+
+// A single-person director that loads no films was probably matched to the wrong TMDB profile:
+// look the name up again and keep the new match if it actually has films.
+async function repairDirector(dir) {
+  if (dir.person_ids.length !== 1) return;
+  const r = await tmdb("/search/person", { query: dir.name });
+  const exact = (r.results || []).filter(p => normName(p.name) === normName(dir.name) && p.id !== dir.person_ids[0]);
+  for (const p of exact) {
+    const films = await loadFilms([p.id]);
+    if (!films.length) continue;
+    const { error } = await sb.from("directors").update({ person_ids: [p.id] }).eq("id", dir.id);
+    if (!error) { dir.person_ids = [p.id]; dir.films = films; }
+    return;
+  }
 }
 
 // ---------- Rendering ----------
@@ -200,7 +223,7 @@ function render() {
     const done = released.length > 0 && watched === released.length;
     const top = topFilm(films);
     const banner = top
-      ? `<img src="${IMG}w780${top.backdrop}" alt="Still from ${esc(top.t)}"><span class="src">${esc(top.t)} · ${top.y}</span>`
+      ? `<img src="${IMG}w780${top.backdrop}" alt="Still from ${esc(top.t)}">`
       : `<div class="initials">${esc(initials(d.name))}</div>`;
     let body;
     if (d.error) body = `<p class="skeleton err">${esc(d.error)}</p>`;
