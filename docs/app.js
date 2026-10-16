@@ -300,12 +300,12 @@ function render() {
       const e = entries.get(f.id) || {}, w = !!e.watched, h = !!e.hidden;
       return `<div class="poster${w ? " watched" : ""}${h ? " removed" : ""}">
         <button class="art" type="button" data-open="${d.id}|${f.id}" aria-label="${esc(f.t)} (${f.y})">
+          <span class="hover-title" aria-hidden="true">${esc(f.t)} (${f.y})</span>
           ${posterHtml(f)}
           ${h ? `<span class="flag">Removed</span>` : e.note ? `<span class="flag">Note</span>` : f.doc ? `<span class="flag">Doc</span>` : ""}
           ${h ? "" : starsHtml(e.rating, "on-poster")}
         </button>
         ${h ? "" : `<button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>`}
-        <div class="lbl">${esc(f.t)} <span>${f.y}</span></div>
       </div>`;
     }).join("") || `<p class="hint" style="grid-column:1/-1">All watched. Nice run.</p>`}</div>`;
     return `<article class="card${done ? " done" : ""}">

@@ -162,9 +162,8 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .tick:hover { border-color: var(--accent); }
 .poster.watched .tick { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .flag { position: absolute; left: 5px; bottom: 5px; font-size: .6rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: rgba(14,13,12,.75); color: var(--fg); padding: 1px 6px; border-radius: 99px; }
-.poster .lbl { font-size: .74rem; line-height: 1.2; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.poster .lbl span { font-family: var(--mono); font-size: .66rem; }
-.poster.watched .lbl { color: var(--fg); }
+.hover-title { position: absolute; inset: auto 0 0 0; z-index: 2; padding: 22px 7px 7px; font-size: .72rem; font-weight: 600; line-height: 1.2; color: var(--fg); background: linear-gradient(to top, rgba(14,13,12,.95) 40%, transparent); opacity: 0; transform: translateY(4px); transition: opacity .15s, transform .15s; pointer-events: none; }
+.poster .art:hover .hover-title, .poster .art:focus-visible .hover-title { opacity: 1; transform: none; }
 .card-foot { display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px 14px; }
 .linkbtn { border: none; background: none; color: var(--muted); font-size: .8rem; padding: 4px 0; }
 .linkbtn:hover, .linkbtn.armed { color: var(--danger); }
@@ -237,6 +236,6 @@ footer img { height: 12px; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
