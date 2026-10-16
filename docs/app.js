@@ -969,7 +969,10 @@ $("cards").addEventListener("scroll", updateNav, { passive: true });
     drag = null;
     row.classList.remove("dragging");
     // A drag shouldn't also count as a click on whatever poster it started on.
-    if (moved) addEventListener("click", ev => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+    if (!moved) return;
+    const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    addEventListener("click", swallow, { capture: true, once: true });
+    setTimeout(() => removeEventListener("click", swallow, { capture: true }), 0);
   });
   row.addEventListener("dragstart", e => e.preventDefault());
 }
