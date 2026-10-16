@@ -203,7 +203,7 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .picker-top span { display: flex; gap: 8px; }
 .picker-top .btn { padding: 8px 12px; }
 .picker-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; align-content: start; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.pick { all: unset; cursor: pointer; position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--raise); box-shadow: 0 0 0 1px var(--line); }
+.pick { all: unset; cursor: pointer; display: block; position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--raise); box-shadow: 0 0 0 1px var(--line); }
 .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pick:hover, .pick:focus-visible { box-shadow: 0 0 0 2px var(--fg); }
 .pick.on { box-shadow: 0 0 0 3px var(--accent); }
@@ -268,6 +268,6 @@ footer img { height: 12px; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
