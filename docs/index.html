@@ -229,6 +229,102 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 }
 footer { padding-block: 8px 28px; color: var(--muted); font-size: .78rem; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 footer img { height: 12px; }
+/* View switcher */
+.views { flex: none; margin-top: 4px; display: flex; gap: 2px; padding: 3px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); }
+.views button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border: none; border-radius: 99px; background: none; color: var(--muted); font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.views button:hover { color: var(--fg); }
+.views button.on { background: var(--raise); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.views svg { width: 18px; height: 18px; }
+.views button[data-view="trophies"] svg { color: var(--accent); }
+.views b { font-family: var(--marquee); font-weight: 800; font-size: 1.1rem; line-height: 1; color: var(--accent); }
+@media (max-width: 640px) { .views .v-label { display: none; } .views button { padding: 8px 11px; } }
+
+/* Watch date in the film sheet */
+.take-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.watched-on { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+.watched-on[hidden] { display: none; }
+.watched-on input, .ud-row input { font: inherit; font-size: .84rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; color-scheme: dark; }
+.watched-on input:focus, .ud-row input:focus { border-color: var(--accent); outline: none; }
+
+/* Suggested directors */
+.recs { display: flex; flex-direction: column; gap: 6px; }
+.recs:empty { display: none; }
+.recs-label { font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.recs .meta { max-width: 260px; }
+
+/* Tier list */
+.tier-btn-row { display: flex; }
+.tier-open { margin-top: 10px; align-self: flex-start; padding: 8px 14px; }
+.tier-sheet { position: relative; width: min(100%, 880px); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 22px 26px 26px; display: flex; flex-direction: column; gap: 12px; }
+.tier-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tier-top h3 { margin: 4px 0 0; font-family: var(--marquee); font-weight: 800; font-size: 2.2rem; line-height: .95; text-transform: uppercase; }
+.tier-top .eyebrow { font-family: var(--mono); font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.tiers { display: flex; flex-direction: column; gap: 6px; }
+.tier-row { display: flex; gap: 8px; min-height: 96px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); padding: 6px; cursor: pointer; }
+.tier-row.unranked { background: none; border-style: dashed; }
+.tier-label { flex: none; width: 46px; border-radius: 8px; display: grid; place-items: center; font-family: var(--marquee); font-weight: 900; font-size: 1.6rem; color: #14110c; background: var(--line); }
+.t-S { background: #f0b54a; } .t-A { background: #ef8f5d; } .t-B { background: #d9c45c; } .t-C { background: #7fbf98; } .t-D { background: #7d9fd0; }
+.tier-row.unranked .tier-label { background: var(--raise); color: var(--muted); }
+.tier-zone { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.tchip { all: unset; cursor: grab; display: block; width: 56px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--raise); position: relative; box-shadow: 0 0 0 1px var(--line); transition: transform .12s; }
+.tchip img, .tchip .ph { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tchip .ph { font-size: .5rem; padding: 4px; }
+.tchip:hover { transform: translateY(-2px); }
+.tchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tchip.sel { box-shadow: 0 0 0 3px var(--accent); transform: translateY(-3px) scale(1.06); }
+.mini-tiers { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.mini-row { display: flex; gap: 6px; align-items: center; }
+.mini-row .tier-label { width: 22px; height: 30px; font-size: .85rem; border-radius: 4px; }
+.mini-row > div { display: flex; flex-wrap: wrap; gap: 3px; }
+.mini { display: block; width: 20px; height: 30px; border-radius: 3px; overflow: hidden; background: var(--raise); }
+.mini img, .mini .ph { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini .ph { font-size: 0; padding: 0; }
+@media (max-width: 640px) {
+  #tierBack { align-items: flex-end; padding: 0; }
+  .tier-sheet { border-radius: 24px 24px 0 0; padding: 18px 16px max(20px, env(safe-area-inset-bottom, 0px)); max-height: 92vh; }
+  .tier-top h3 { font-size: 1.7rem; }
+  .tier-row { min-height: 80px; }
+  .tier-label { width: 34px; font-size: 1.3rem; }
+  .tchip { width: 46px; }
+}
+
+/* Watch calendar */
+.cal-view { padding-block: 18px 32px; display: flex; flex-direction: column; gap: 16px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cal-head .tv-title { margin: 0; }
+.cal-years { display: flex; gap: 4px; }
+.cal-years button { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 99px; padding: 5px 12px; font-family: var(--mono); font-size: .8rem; }
+.cal-years button.on { color: var(--fg); border-color: var(--accent); }
+.cal-stats { display: flex; flex-wrap: wrap; gap: 14px 30px; font-family: var(--mono); font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.cal-stats b { display: block; font-family: var(--marquee); font-size: 2rem; letter-spacing: 0; color: var(--fg); font-weight: 800; line-height: 1; }
+.cal-scroll { overflow-x: auto; padding: 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.cal { --cell: 13px; --gap: 3px; width: max-content; }
+.cal-months { display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); column-gap: var(--gap); height: 16px; font-family: var(--mono); font-size: .64rem; color: var(--muted); }
+.cal-months span { white-space: nowrap; }
+.cal-grid { display: grid; grid-template-rows: repeat(7, var(--cell)); grid-auto-flow: column; grid-auto-columns: var(--cell); gap: var(--gap); }
+.day { display: block; width: var(--cell); height: var(--cell); border-radius: 3px; background: var(--raise); border: none; padding: 0; }
+.day.out { background: none; }
+.day.l1 { background: rgba(240,181,74,.35); } .day.l2 { background: rgba(240,181,74,.65); } .day.l3 { background: var(--accent); box-shadow: 0 0 6px -1px var(--accent); }
+button.day:hover { outline: 1px solid var(--fg); }
+.day.sel { outline: 2px solid var(--fg); outline-offset: 1px; }
+.day.now { box-shadow: inset 0 0 0 1px var(--muted); }
+.cal-legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: .72rem; color: var(--muted); --cell: 11px; }
+.cal-legend .day { margin: 0 1px; }
+.cal-day h3 { margin: 0 0 10px; font-family: var(--marquee); font-weight: 800; font-size: 1.4rem; text-transform: uppercase; }
+.cal-films { display: flex; flex-wrap: wrap; gap: 10px; }
+.cal-film { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); text-align: left; }
+.cal-film:hover { border-color: var(--accent); }
+.cal-film b, .ud-title b { display: block; font-size: .92rem; }
+.cal-film small, .ud-title small { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+.cf-poster { flex: none; width: 40px; aspect-ratio: 2 / 3; border-radius: 5px; overflow: hidden; background: var(--raise); position: relative; display: block; }
+.cf-poster img, .cf-poster .ph { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cf-poster .ph { font-size: 0; padding: 0; }
+.undated { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.undated .linkbtn { color: var(--accent); font-size: .88rem; }
+.undated-list { display: flex; flex-direction: column; gap: 8px; width: min(100%, 560px); }
+.ud-row { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.ud-row .ud-title { flex: 1; min-width: 0; }
+.ud-row input { width: auto; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
@@ -238,7 +334,11 @@ footer img { height: 12px; }
     <h1>Director <span>Runs</span></h1>
     <p>Work through a filmography, one frame at a time.</p>
   </div>
-  <button class="trophy-btn" type="button" id="trophyBtn" hidden></button>
+  <nav class="views" id="views" aria-label="Views" hidden>
+    <button type="button" data-view="runs" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1 2v2h2V5H5Zm12 0v2h2V5h-2ZM5 9v2h2V9H5Zm12 0v2h2V9h-2ZM5 13v2h2v-2H5Zm12 0v2h2v-2h-2ZM5 17v2h2v-2H5Zm12 0v2h2v-2h-2ZM9 5v14h6V5H9Z"/></svg><span class="v-label">Directors</span></button>
+    <button type="button" data-view="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2ZM5 9v10h14V9H5Zm2 2h3v3H7v-3Z"/></svg><span class="v-label">Calendar</span></button>
+    <button type="button" data-view="trophies"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10v2h4v3a5 5 0 0 1-4.6 5A6 6 0 0 1 13 15.9V18h3a2 2 0 0 1 2 2v2H6v-2a2 2 0 0 1 2-2h3v-2.1A6 6 0 0 1 7.6 12 5 5 0 0 1 3 7V4h4V2Zm0 4H5v1a3 3 0 0 0 2 2.8V6Zm10 0v3.8A3 3 0 0 0 19 7V6h-2Z"/></svg><span class="v-label">Trophies</span><b id="trophyCount">0</b></button>
+  </nav>
 </header>
 
 <main id="screen"></main>
@@ -250,6 +350,7 @@ footer img { height: 12px; }
   </div>
   <div id="suggest"></div>
   <div class="results" id="results"></div>
+  <div class="recs" id="recs"></div>
 </section>
 
 <div class="rowwrap" id="rowwrap" hidden>
@@ -259,6 +360,7 @@ footer img { height: 12px; }
 </div>
 
 <section class="gutter trophy-view" id="trophyView" hidden></section>
+<section class="gutter cal-view" id="calView" hidden></section>
 
 <footer class="gutter" id="footer" hidden>
   <span>Film data and images from <a href="https://www.themoviedb.org" style="color:inherit">TMDB</a>. This site uses the TMDB API but is not endorsed or certified by TMDB.</span>
@@ -266,10 +368,11 @@ footer img { height: 12px; }
 </footer>
 
 <div class="sheet-back" id="sheetBack" hidden></div>
+<div class="sheet-back" id="tierBack" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

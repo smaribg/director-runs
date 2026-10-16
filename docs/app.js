@@ -31,6 +31,7 @@ const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => 
 const hue = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
 const placeholder = f => `<div class="ph" style="background:linear-gradient(160deg,hsl(${hue(f.t)} 30% 22%),hsl(${(hue(f.t) + 40) % 360} 25% 10%))">${esc(f.t)}<small>${f.y || "TBA"}</small></div>`;
 const posterOf = f => entries.get(f.id)?.poster || f.poster;
+const today = () => new Date().toLocaleDateString("sv");   // local YYYY-MM-DD
 const posterHtml = (f, size = "w342") => posterOf(f) ? `<img src="${IMG + size + posterOf(f)}" alt="${esc(f.t)} poster" loading="lazy">` : placeholder(f);
 
 // ---------- State ----------
@@ -133,9 +134,10 @@ async function loadData() {
   const old = new Map(directors.map(x => [x.id, x]));
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
   entries.clear();
-  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, poster: r.poster || "", at: r.updated_at });
+  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, poster: r.poster || "", on: r.watched_on || "", at: r.updated_at });
   render();
   for (const dir of directors) if (!dir.films) fillFilms(dir);
+  scheduleRecs();
 }
 
 async function fillFilms(dir) {
@@ -145,21 +147,31 @@ async function fillFilms(dir) {
   }
   catch (err) { dir.error = err.status === 401 ? "TMDB rejected the key." : "Couldn't load films. Reload to try again."; }
   render();
+  scheduleRecs();
 }
 
 async function saveEntry(movieId, patch) {
   const cur = entries.get(movieId) || { watched: false, note: "", hidden: false, rating: 0 };
   const next = { ...cur, ...patch, at: new Date().toISOString() };
+  // Ticking a film dates it today; unticking clears the date. Dates can be changed in the film sheet.
+  if ("watched" in patch && patch.watched !== !!cur.watched) next.on = patch.watched ? today() : "";
   const before = completedIds();
   entries.set(movieId, next);
   render();
   const fresh = directors.find(d => completedIds().has(d.id) && !before.has(d.id));
-  if (fresh) celebrate(fresh);
+  if (fresh) {
+    celebrate(fresh);
+    setTimeout(() => { if (!tier && view === "runs") { closeSheet(); openTier(fresh.id, true); } }, 1600);
+  }
+  if ("watched" in patch || "rating" in patch || "hidden" in patch) scheduleRecs();
   const row = { user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() };
   if ("hidden" in patch || next.hidden) row.hidden = next.hidden;
   if ("rating" in patch || next.rating) row.rating = next.rating || null;   // only sent when used, so older databases keep working
   if ("poster" in patch || next.poster) row.poster = next.poster || null;
-  const { error } = await sb.from("entries").upsert(row);
+  if (next.on || cur.on) row.watched_on = next.on || null;
+  let { error } = await sb.from("entries").upsert(row);
+  // Before the watched_on column exists, save everything else rather than failing the whole change.
+  if (error && /watched_on/.test(error.message)) { delete row.watched_on; ({ error } = await sb.from("entries").upsert(row)); }
   if (error) { entries.set(movieId, cur); render(); if (open?.movie === movieId) renderSheetState(); notify("Couldn't save that change. " + error.message); }
 }
 
@@ -239,17 +251,18 @@ function progressOf(d) {
 }
 function completedIds() { return new Set(directors.filter(d => progressOf(d).done).map(d => d.id)); }
 
-let view = "runs";   // "runs" (director cards) or "trophies"
+let view = "runs";   // "runs" (director cards), "calendar" or "trophies"
 
 function shelf() {
   const won = directors.filter(d => progressOf(d).done);
-  const b = $("trophyBtn");
-  b.hidden = !directors.length;
-  b.innerHTML = view === "trophies"
-    ? `<span aria-hidden="true">‹</span> Back to directors`
-    : `${TROPHY}<span class="tb-label">Trophies</span><b>${won.length}</b>`;
-  b.setAttribute("aria-label", view === "trophies" ? "Back to directors" : `Trophies, ${won.length} won`);
+  $("views").hidden = !directors.length;
+  $("trophyCount").textContent = won.length;
+  document.querySelectorAll("#views [data-view]").forEach(b => {
+    b.classList.toggle("on", b.dataset.view === view);
+    b.setAttribute("aria-pressed", b.dataset.view === view);
+  });
   if (view === "trophies") renderTrophies(won);
+  if (view === "calendar") renderCalendar();
 }
 
 function renderTrophies(won) {
@@ -277,6 +290,8 @@ function renderTrophies(won) {
         <div class="tmeta">${released.length} films${at ? ` · completed ${fmt(at)}` : ""}</div>
         ${avg ? `<div class="tavg">${starsHtml(Math.round(avg))}<span>${avg.toFixed(1)} average</span></div>` : ""}
         ${fav ? `<div class="tfav"><span>Favourite</span>${esc(fav.f.t)} <small>${fav.f.y}</small></div>` : ""}
+        ${miniTiers(d)}
+        <button class="btn tier-open" type="button" data-tieropen="${d.id}">${hasTiers(d) ? "Edit tier list" : "Make a tier list"}</button>
       </div>
     </article>`;
   }).join("")}</div>`;
@@ -284,10 +299,11 @@ function renderTrophies(won) {
 
 function setView(v) {
   view = v;
-  const t = v === "trophies";
-  $("addPanel").hidden = t; $("rowwrap").hidden = t; $("trophyView").hidden = !t;
+  $("addPanel").hidden = v !== "runs"; $("rowwrap").hidden = v !== "runs";
+  $("trophyView").hidden = v !== "trophies"; $("calView").hidden = v !== "calendar";
   shelf();
-  if (!t) updateNav();
+  if (v === "runs") updateNav();
+  if (v === "calendar") { const w = document.querySelector(".cal-scroll"); if (w) w.scrollLeft = w.scrollWidth; }
   window.scrollTo({ top: 0 });
 }
 
@@ -481,8 +497,11 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
       <div class="spacer"></div>
       ${e.hidden ? `<p class="hint take">Removed from this list, so it doesn't count toward progress.</p>` : `
       <section class="take" aria-label="Your take">
-        <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
-          `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>
+        <div class="take-row">
+          <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
+            `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>
+          <label class="watched-on" id="watchedOnWrap" hidden>Watched <input type="date" id="watchedOn" max="${today()}"></label>
+        </div>
         <textarea id="noteInput" maxlength="500" placeholder="Your note: a short thought on it" aria-label="Your note">${esc(e.note || "")}</textarea>
       </section>`}
       <div class="sheet-foot">
@@ -557,6 +576,8 @@ function renderSheetState() {
   const e = entries.get(open.movie) || {};
   if (b) { b.textContent = e.watched ? "✓ Watched" : "Mark as watched"; b.setAttribute("aria-pressed", !!e.watched); }
   document.querySelectorAll(".rate button").forEach(x => x.classList.toggle("on", +x.dataset.rate <= (e.rating || 0)));
+  const wo = $("watchedOn");
+  if (wo) { $("watchedOnWrap").hidden = !e.watched; if (document.activeElement !== wo) wo.value = e.on || ""; }
 }
 function closeSheet() {
   if (!open) return;
@@ -565,13 +586,236 @@ function closeSheet() {
   $("sheetBack").hidden = true; $("sheetBack").innerHTML = "";
 }
 
+// ---------- Tier lists ----------
+const TIERS = ["S", "A", "B", "C", "D"];
+let tier = null;       // {dir, draft: {S, A, B, C, D, U: [movie ids]}, sel, fresh}
+let tierTimer = null;
+const hasTiers = d => !!d.tiers && TIERS.some(t => d.tiers[t]?.length);
+
+function miniTiers(d) {
+  if (!hasTiers(d)) return "";
+  const byId = new Map((d.films || []).map(f => [f.id, f]));
+  return `<div class="mini-tiers">${TIERS.filter(t => d.tiers[t]?.some(id => byId.has(id))).map(t =>
+    `<div class="mini-row"><span class="tier-label t-${t}">${t}</span><div>${d.tiers[t].filter(id => byId.has(id)).map(id => {
+      const f = byId.get(id);
+      return `<span class="mini" title="${esc(f.t)} (${f.y})">${posterHtml(f, "w92")}</span>`;
+    }).join("")}</div></div>`).join("")}</div>`;
+}
+
+function openTier(dirId, fresh = false) {
+  const d = directors.find(x => x.id === dirId);
+  if (!d?.films) return;
+  const films = progressOf(d).released, ids = new Set(films.map(f => f.id));
+  const draft = { S: [], A: [], B: [], C: [], D: [], U: [] }, placed = new Set();
+  const saved = hasTiers(d) ? d.tiers : null;
+  if (saved) for (const t of TIERS) for (const id of saved[t] || []) if (ids.has(id) && !placed.has(id)) { draft[t].push(id); placed.add(id); }
+  // A first tier list starts from your star ratings: 5 stars in S down to 1 star in D.
+  for (const f of films) if (!placed.has(f.id)) {
+    const r = entries.get(f.id)?.rating || 0;
+    (saved || !r ? draft.U : draft[TIERS[5 - r]]).push(f.id);
+  }
+  tier = { dir: dirId, draft, sel: null, fresh };
+  renderTier();
+  $("tierBack").hidden = false;
+  $("tierDone").focus();
+}
+
+function renderTier() {
+  const d = directors.find(x => x.id === tier.dir), byId = new Map(d.films.map(f => [f.id, f]));
+  const chip = id => { const f = byId.get(id); return f ? `<button class="tchip${tier.sel === id ? " sel" : ""}" type="button" draggable="true"
+    data-tierfilm="${id}" title="${esc(f.t)} (${f.y})" aria-label="${esc(f.t)} (${f.y})">${posterHtml(f, "w185")}</button>` : ""; };
+  const row = (t, label) => `<div class="tier-row${t === "U" ? " unranked" : ""}" data-tier="${t}">
+    <span class="tier-label t-${t}">${label}</span>
+    <div class="tier-zone">${tier.draft[t].map(chip).join("") || (t === "U" ? `<span class="hint">All ranked.</span>` : "")}</div></div>`;
+  $("tierBack").innerHTML = `<div class="tier-sheet" role="dialog" aria-modal="true" aria-labelledby="tierTitle">
+    <div class="tier-top">
+      <div><span class="eyebrow">${tier.fresh ? "Trophy unlocked · " : ""}Tier list</span><h3 id="tierTitle">Rank ${esc(d.name)}</h3></div>
+      <button class="btn primary" type="button" id="tierDone">Done</button>
+    </div>
+    <p class="hint">${tier.sel != null ? "Now tap a row to move it there, or tap another poster to put it in front of that one."
+      : "Tap a poster, then tap a row to move it. On a computer you can also drag."}</p>
+    <div class="tiers">${TIERS.map(t => row(t, t)).join("")}</div>
+    ${row("U", "?")}
+  </div>`;
+}
+
+function moveTier(id, t, beforeId = null) {
+  for (const k in tier.draft) tier.draft[k] = tier.draft[k].filter(x => x !== id);
+  const arr = tier.draft[t], i = beforeId != null ? arr.indexOf(beforeId) : -1;
+  i >= 0 ? arr.splice(i, 0, id) : arr.push(id);
+  tier.sel = null;
+  renderTier();
+  clearTimeout(tierTimer);
+  tierTimer = setTimeout(saveTier, 600);
+}
+
+async function saveTier() {
+  clearTimeout(tierTimer);
+  if (!tier) return;
+  const d = directors.find(x => x.id === tier.dir);
+  const { U, ...ranked } = tier.draft;
+  d.tiers = JSON.parse(JSON.stringify(ranked));
+  const { error } = await sb.from("directors").update({ tiers: d.tiers }).eq("id", d.id);
+  if (error) notify("Couldn't save the tier list. " + error.message);
+}
+
+function closeTier() {
+  if (!tier) return;
+  saveTier();
+  tier = null;
+  $("tierBack").hidden = true; $("tierBack").innerHTML = "";
+  shelf();
+}
+
+function onTierClick(e) {
+  if (e.target.id === "tierBack") { closeTier(); return true; }
+  const chipEl = e.target.closest("[data-tierfilm]"), rowEl = e.target.closest(".tier-row");
+  if (e.target.closest("#tierDone")) { closeTier(); return true; }
+  if (chipEl) {
+    const id = +chipEl.dataset.tierfilm;
+    if (tier.sel === id) tier.sel = null;
+    else if (tier.sel != null) return moveTier(tier.sel, rowEl.dataset.tier, id), true;
+    else tier.sel = id;
+    renderTier();
+    return true;
+  }
+  if (rowEl && tier.sel != null) { moveTier(tier.sel, rowEl.dataset.tier); return true; }
+  return false;
+}
+
+// ---------- Watch calendar ----------
+let calYear = new Date().getFullYear(), calDay = null, showUndated = false;
+
+function watchedFilms() {
+  const seen = new Map();
+  for (const d of directors) for (const f of d.films || []) {
+    const e = entries.get(f.id);
+    if (e?.watched && !e.hidden && !seen.has(f.id)) seen.set(f.id, { f, d, on: e.on || "" });
+  }
+  return [...seen.values()];
+}
+
+function renderCalendar() {
+  const all = watchedFilms(), byDay = new Map();
+  for (const x of all) if (x.on) { if (!byDay.has(x.on)) byDay.set(x.on, []); byDay.get(x.on).push(x); }
+  const undated = all.filter(x => !x.on).sort((a, b) => a.d.name.localeCompare(b.d.name) || a.f.date.localeCompare(b.f.date));
+  const years = [...new Set([new Date().getFullYear(), ...[...byDay.keys()].map(k => +k.slice(0, 4))])].sort();
+  if (!years.includes(calYear)) calYear = years[years.length - 1];
+
+  // Columns are weeks starting on Monday, rows are days, like GitHub's contribution graph.
+  const jan1 = new Date(calYear, 0, 1), lead = (jan1.getDay() + 6) % 7;
+  const daysInYear = (new Date(calYear + 1, 0, 1) - jan1) / 864e5 | 0;
+  const cols = Math.ceil((lead + daysInYear) / 7);
+  const fmtDay = dt => dt.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  let cells = "", months = "", inYear = 0, activeDays = 0;
+  const perMonth = new Array(12).fill(0);
+  for (let i = 0; i < cols * 7; i++) {
+    const dt = new Date(calYear, 0, 1 - lead + i), k = dt.toLocaleDateString("sv");
+    if (dt.getFullYear() !== calYear) { cells += `<span class="day out"></span>`; continue; }
+    if (dt.getDate() === 1) months += `<span style="grid-column:${Math.floor(i / 7) + 1}">${dt.toLocaleDateString(undefined, { month: "short" })}</span>`;
+    const list = byDay.get(k) || [];
+    inYear += list.length; perMonth[dt.getMonth()] += list.length; if (list.length) activeDays++;
+    const title = `${fmtDay(dt)}${list.length ? ": " + list.map(x => x.f.t).join(", ") : ""}`;
+    cells += list.length
+      ? `<button class="day l${Math.min(list.length, 3)}${calDay === k ? " sel" : ""}${k === today() ? " now" : ""}" type="button" data-day="${k}" title="${esc(title)}" aria-label="${esc(title)}"></button>`
+      : `<span class="day${k === today() ? " now" : ""}" title="${esc(title)}"></span>`;
+  }
+  // Longest run of consecutive days with at least one film, within the year.
+  let streak = 0, best = 0;
+  for (let i = 0; i < daysInYear; i++) {
+    const k = new Date(calYear, 0, 1 + i).toLocaleDateString("sv");
+    streak = byDay.has(k) ? streak + 1 : 0; best = Math.max(best, streak);
+  }
+  const busiest = perMonth.indexOf(Math.max(...perMonth));
+  const dayList = calDay && byDay.get(calDay);
+
+  $("calView").innerHTML = `
+    <div class="cal-head"><h2 class="tv-title">Watch calendar</h2>
+      ${years.length > 1 ? `<div class="cal-years">${years.map(y => `<button type="button" class="${y === calYear ? "on" : ""}" data-calyear="${y}">${y}</button>`).join("")}</div>` : ""}</div>
+    <div class="cal-stats">
+      <div><b>${inYear}</b>films in ${calYear}</div>
+      <div><b>${activeDays}</b>movie days</div>
+      <div><b>${best}</b>day best streak</div>
+      ${inYear ? `<div><b>${new Date(calYear, busiest, 1).toLocaleDateString(undefined, { month: "short" })}</b>busiest month</div>` : ""}
+    </div>
+    <div class="cal-scroll"><div class="cal" style="--cols:${cols}">
+      <div class="cal-months">${months}</div>
+      <div class="cal-grid">${cells}</div>
+    </div></div>
+    <div class="cal-legend">Less <span class="day"></span><span class="day l1"></span><span class="day l2"></span><span class="day l3"></span> More</div>
+    ${dayList ? `<div class="cal-day"><h3>${fmtDay(new Date(calDay + "T12:00"))}</h3><div class="cal-films">${dayList.map(x => `
+      <button class="cal-film" type="button" data-open="${x.d.id}|${x.f.id}"><span class="cf-poster">${posterHtml(x.f, "w185")}</span>
+        <span><b>${esc(x.f.t)}</b><small>${esc(x.d.name)} · ${x.f.y}</small></span></button>`).join("")}</div></div>` : ""}
+    ${undated.length ? `<div class="undated">
+      <button class="linkbtn" type="button" id="undatedToggle">${showUndated ? "Hide" : "Add dates to"} ${undated.length} watched film${undated.length > 1 ? "s" : ""} without a date</button>
+      ${showUndated ? `<div class="undated-list">${undated.map(x => `<div class="ud-row">
+        <span class="cf-poster">${posterHtml(x.f, "w92")}</span>
+        <span class="ud-title"><b>${esc(x.f.t)}</b><small>${esc(x.d.name)} · ${x.f.y}</small></span>
+        <input type="date" class="field" data-datefor="${x.f.id}" max="${today()}" aria-label="Watch date for ${esc(x.f.t)}"></div>`).join("")}</div>` : ""}
+    </div>` : ""}`;
+}
+
+// ---------- Suggested directors ----------
+let recs = [], recsTimer = null;
+function scheduleRecs() { clearTimeout(recsTimer); recsTimer = setTimeout(() => loadRecs().catch(() => {}), 2500); }
+
+// Directors of the films TMDB recommends for your best-rated watched films, minus anyone already on your list.
+async function loadRecs() {
+  if (directors.some(d => !d.films && !d.error)) return scheduleRecs();
+  const rating = x => entries.get(x.f.id)?.rating || 3;
+  const seeds = watchedFilms().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes).slice(0, 8);
+  const have = new Set(directors.flatMap(d => d.person_ids));
+  if (!seeds.length) { recs = []; return renderRecs(); }
+  const key = seeds.map(x => x.f.id + ":" + rating(x)).join(",") + "|" + [...have].sort().join(",");
+  const cached = local.get("dr-recs", null);
+  if (cached?.key === key && Date.now() - cached.at < 864e5) { recs = cached.list; return renderRecs(); }
+  const known = new Set(directors.flatMap(d => (d.films || []).map(f => f.id)));
+  const movies = new Map();
+  await pool(seeds, 4, async s => {
+    const r = await tmdb(`/movie/${s.f.id}/recommendations`);
+    (r.results || []).forEach((m, i) => {
+      if (known.has(m.id)) return;
+      const x = movies.get(m.id) || { id: m.id, score: 0, because: new Map() };
+      const w = rating(s) * (1 - i / 40);
+      x.score += w; x.because.set(s.f.t, (x.because.get(s.f.t) || 0) + w);
+      movies.set(m.id, x);
+    });
+  });
+  const people = new Map();
+  await pool([...movies.values()].sort((a, b) => b.score - a.score).slice(0, 16), 4, async m => {
+    const c = await tmdb(`/movie/${m.id}/credits`);
+    for (const p of (c.crew || []).filter(p => p.job === "Director")) {
+      if (have.has(p.id)) continue;
+      const x = people.get(p.id) || { id: p.id, name: p.name, profile: p.profile_path || "", score: 0, because: new Map() };
+      x.score += m.score;
+      for (const [t, w] of m.because) x.because.set(t, (x.because.get(t) || 0) + w);
+      people.set(p.id, x);
+    }
+  });
+  recs = [...people.values()].sort((a, b) => b.score - a.score).slice(0, 6).map(p => ({
+    id: p.id, name: p.name, profile: p.profile,
+    because: [...p.because].sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0])
+  }));
+  local.set("dr-recs", { key, at: Date.now(), list: recs });
+  renderRecs();
+}
+
+function renderRecs() {
+  const list = recs.filter(p => !directors.some(d => d.person_ids.includes(p.id)));
+  $("recs").innerHTML = list.length ? `<span class="recs-label">Suggested for you</span><div class="results">${list.map(p => `
+    <button class="result" type="button" data-rec="${p.id}">
+      <span class="avatar">${p.profile ? `<img src="${IMG}w185${p.profile}" alt="">` : esc(initials(p.name))}</span>
+      <span>${esc(p.name)}<span class="meta">Because you liked ${esc(p.because.join(" & "))}</span></span></button>`).join("")}</div>` : "";
+}
+
 // ---------- Screens ----------
 function showScreen(html) {
   $("screen").innerHTML = html;
   const app = !html;
-  $("addPanel").hidden = !app || view === "trophies"; $("rowwrap").hidden = !app || view === "trophies";
-  $("trophyView").hidden = !app || view !== "trophies"; $("footer").hidden = !app && !user;
-  if (!app) $("trophyBtn").hidden = true;
+  $("addPanel").hidden = !app || view !== "runs"; $("rowwrap").hidden = !app || view !== "runs";
+  $("trophyView").hidden = !app || view !== "trophies"; $("calView").hidden = !app || view !== "calendar";
+  $("footer").hidden = !app && !user;
+  if (!app) $("views").hidden = true;
 }
 
 function screenConfig() {
@@ -624,6 +868,7 @@ async function start() {
 
 // ---------- Events ----------
 document.addEventListener("click", e => {
+  if (tier && onTierClick(e)) return;
   if (e.target.id === "sheetBack") return closeSheet();
   if (e.target.closest?.("#toast")) { $("toast").hidden = true; return $("toast").dataset.kind === "trophy" && setView("trophies"); }
   const t = e.target.closest("button");
@@ -642,7 +887,12 @@ document.addEventListener("click", e => {
   if (t.id === "pickerReset") return choosePoster("");
   if (t.dataset.poster) return choosePoster(t.dataset.poster);
   if (t.id === "sheetPrev" || t.id === "sheetNext") return stepSheet(t.id === "sheetNext" ? 1 : -1, t.id);
-  if (t.id === "trophyBtn") return setView(view === "trophies" ? "runs" : "trophies");
+  if (t.dataset.view) return setView(t.dataset.view);
+  if (t.dataset.tieropen) return openTier(t.dataset.tieropen);
+  if (t.dataset.calyear) { calYear = +t.dataset.calyear; calDay = null; return renderCalendar(); }
+  if (t.dataset.day) { calDay = calDay === t.dataset.day ? null : t.dataset.day; return renderCalendar(); }
+  if (t.id === "undatedToggle") { showUndated = !showUndated; return renderCalendar(); }
+  if (t.dataset.rec) { const p = recs.find(x => x.id === +t.dataset.rec); return p && addDirector(p.name, [p.id]); }
   // Rating a film marks it watched; tapping the current rating clears it.
   if (t.dataset.rate && open) { const n = +t.dataset.rate, cur = entries.get(open.movie)?.rating || 0;
     return saveEntry(open.movie, n === cur ? { rating: 0 } : { rating: n, watched: true }); }
@@ -655,8 +905,26 @@ document.addEventListener("click", e => {
     setTimeout(() => { if (t.isConnected) { t.classList.remove("armed"); t.textContent = "Remove director"; } }, 4000);
   }
 });
+document.addEventListener("change", e => {
+  if (e.target.id === "watchedOn" && open) return saveEntry(open.movie, { on: e.target.value });
+  if (e.target.dataset.datefor && e.target.value) saveEntry(+e.target.dataset.datefor, { on: e.target.value });
+});
+// Dragging posters between tier rows (mouse); on touch screens it's tap-to-move.
+document.addEventListener("dragstart", e => {
+  const c = e.target.closest?.("[data-tierfilm]");
+  if (c) { e.dataTransfer.setData("text/plain", c.dataset.tierfilm); e.dataTransfer.effectAllowed = "move"; }
+});
+document.addEventListener("dragover", e => { if (tier && e.target.closest?.(".tier-row")) e.preventDefault(); });
+document.addEventListener("drop", e => {
+  const row = tier && e.target.closest?.(".tier-row");
+  if (!row) return;
+  e.preventDefault();
+  const id = +e.dataTransfer.getData("text/plain"), before = e.target.closest("[data-tierfilm]");
+  if (id) moveTier(id, row.dataset.tier, before && +before.dataset.tierfilm !== id ? +before.dataset.tierfilm : null);
+});
 document.addEventListener("keydown", e => {
-  if (!open) { if (e.key === "Escape" && view === "trophies") setView("runs"); return; }
+  if (tier) { if (e.key === "Escape") closeTier(); return; }
+  if (!open) { if (e.key === "Escape" && view !== "runs") setView("runs"); return; }
   if (e.key === "Escape") { if ($("picker")) { $("picker").remove(); $("sheetPoster")?.focus(); } else closeSheet(); return; }
   if ($("picker")) return;
   if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.id !== "noteInput") { e.preventDefault(); stepSheet(e.key === "ArrowRight" ? 1 : -1); }
@@ -675,7 +943,7 @@ $("sheetBack").addEventListener("touchend", e => {
 $("cards").addEventListener("scroll", updateNav, { passive: true });
 addEventListener("resize", updateNav);
 // Pick up changes made on another device when you come back to this tab.
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && user && tmdbToken && !open) loadData().catch(() => {}); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && user && tmdbToken && !open && !tier) loadData().catch(() => {}); });
 
 // ---------- Boot ----------
 (async () => {

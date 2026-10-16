@@ -7,6 +7,7 @@ create table if not exists public.directors (
   name text not null,
   person_ids integer[] not null,          -- TMDB person ids (two for the Coen brothers)
   added_at timestamptz not null default now(),
+  tiers jsonb,                            -- tier list: {"S": [movie ids], "A": [...], ...}
   unique (user_id, name)
 );
 
@@ -18,6 +19,7 @@ create table if not exists public.entries (
   hidden boolean not null default false,  -- removed from the director's list (docs, collaborations…)
   rating smallint check (rating between 1 and 5),
   poster text,                            -- chosen TMDB poster path; null = TMDB's default
+  watched_on date,                        -- day you watched it, for the calendar
   updated_at timestamptz not null default now(),
   primary key (user_id, movie_id)
 );
@@ -25,6 +27,8 @@ create table if not exists public.entries (
 alter table public.entries add column if not exists hidden boolean not null default false;
 alter table public.entries add column if not exists rating smallint check (rating between 1 and 5);
 alter table public.entries add column if not exists poster text;
+alter table public.entries add column if not exists watched_on date;
+alter table public.directors add column if not exists tiers jsonb;
 
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users on delete cascade,
