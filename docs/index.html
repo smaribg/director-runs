@@ -192,11 +192,10 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .sheet .big:hover .big-hint, .sheet .big:focus-visible .big-hint { opacity: 1; }
 @media (hover: none) { .big-hint { opacity: .85; } }
 .film-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .82rem; color: var(--muted); min-height: 28px; }
-.score b { font-family: var(--marquee); font-weight: 800; font-size: 1.25rem; color: var(--fg); }
-.score small { font-family: var(--mono); font-size: .68rem; margin-left: 2px; }
 .runtime { font-family: var(--mono); font-size: .74rem; margin-right: 4px; }
-.pill { display: inline-block; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--raise); color: var(--fg); text-decoration: none; font-size: .76rem; font-weight: 600; }
-.pill:hover { border-color: var(--accent); color: var(--accent); }
+.site-icon { display: inline-flex; border-radius: 5px; opacity: .85; transition: opacity .15s, transform .15s; }
+.site-icon:hover, .site-icon:focus-visible { opacity: 1; transform: translateY(-1px); }
+.site-icon svg { width: 44px; height: 22px; display: block; }
 .picker { position: absolute; inset: 0; z-index: 3; background: var(--surface); display: flex; flex-direction: column; gap: 14px; padding: 22px 26px; }
 .picker-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .picker-top strong { font-family: var(--marquee); font-weight: 800; font-size: 1.6rem; text-transform: uppercase; }
@@ -268,6 +267,6 @@ footer img { height: 12px; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

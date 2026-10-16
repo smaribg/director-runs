@@ -462,7 +462,7 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
     <button class="big" type="button" id="sheetPoster" aria-label="Choose a different poster">${posterHtml(f, "w500")}<span class="big-hint">Change poster</span></button>
     <div class="body">
       <h3 id="sheetTitle">${esc(f.t)} <span class="year">${f.y}</span></h3>
-      <div class="film-meta" id="sheetMeta"><a class="pill" href="https://letterboxd.com/tmdb/${f.id}/" target="_blank" rel="noopener">Letterboxd</a></div>
+      <div class="film-meta" id="sheetMeta">${lbLink(f.id)}</div>
       ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
         `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
@@ -481,18 +481,18 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
   ($(focusId) || $("sheetDone")).focus();
   fillSheetMeta(f);
 }
+const ICON_IMDB = `<svg viewBox="0 0 64 32" aria-hidden="true"><rect width="64" height="32" rx="5" fill="#f5c518"/><text x="32" y="23" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="18" fill="#000">IMDb</text></svg>`;
+const ICON_LB = `<svg viewBox="0 0 64 32" aria-hidden="true"><rect width="64" height="32" rx="5" fill="#202830"/><circle cx="19" cy="16" r="9" fill="#ff8000"/><circle cx="32" cy="16" r="9" fill="#00e054" fill-opacity=".9"/><circle cx="45" cy="16" r="9" fill="#40bcf4" fill-opacity=".9"/></svg>`;
+const lbLink = id => `<a class="site-icon" href="https://letterboxd.com/tmdb/${id}/" target="_blank" rel="noopener" title="Letterboxd" aria-label="Open on Letterboxd">${ICON_LB}</a>`;
 async function fillSheetMeta(f) {
   let m;
   try { m = await detailsOf(f.id); } catch { return; }
   if (open?.movie !== f.id) return;
-  const votes = m.vc >= 1000 ? (m.vc / 1000).toFixed(m.vc >= 1e4 ? 0 : 1) + "k" : m.vc;
   const rt = m.rt ? `${Math.floor(m.rt / 60) ? Math.floor(m.rt / 60) + "h " : ""}${m.rt % 60}m` : "";
   $("sheetMeta").innerHTML = [
-    m.vc ? `<span class="score" title="${m.vc} votes on TMDB"><b>${m.va.toFixed(1)}</b>/10 TMDB <small>${votes} votes</small></span>` : "",
     rt ? `<span class="runtime">${rt}</span>` : "",
-    m.imdb ? `<a class="pill" href="https://www.imdb.com/title/${m.imdb}/" target="_blank" rel="noopener">IMDb</a>` : "",
-    `<a class="pill" href="https://letterboxd.com/tmdb/${f.id}/" target="_blank" rel="noopener">Letterboxd</a>`,
-    `<a class="pill" href="https://www.themoviedb.org/movie/${f.id}" target="_blank" rel="noopener">TMDB</a>`
+    m.imdb ? `<a class="site-icon" href="https://www.imdb.com/title/${m.imdb}/" target="_blank" rel="noopener" title="IMDb" aria-label="Open on IMDb">${ICON_IMDB}</a>` : "",
+    lbLink(f.id)
   ].join("");
 }
 
