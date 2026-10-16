@@ -951,10 +951,11 @@ $("cards").addEventListener("scroll", updateNav, { passive: true });
 // Drag the director row sideways with the mouse (touch screens already swipe natively).
 {
   const row = $("cards");
-  let drag = null;
+  let drag = null, glide = 0;
   row.addEventListener("pointerdown", e => {
     if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input, textarea")) return;
-    drag = { x: e.clientX, left: row.scrollLeft, moved: false };
+    cancelAnimationFrame(glide);
+    drag = { x: e.clientX, left: row.scrollLeft, moved: false, v: 0, lx: e.clientX, lt: performance.now() };
   });
   addEventListener("pointermove", e => {
     if (!drag) return;
@@ -962,14 +963,27 @@ $("cards").addEventListener("scroll", updateNav, { passive: true });
     if (!drag.moved && Math.abs(dx) < 6) return;
     if (!drag.moved) { drag.moved = true; row.classList.add("dragging"); }
     row.scrollLeft = drag.left - dx;
+    // keep a smoothed velocity so letting go carries the row on a little
+    const now = performance.now(), dt = Math.max(1, now - drag.lt);
+    drag.v = 0.8 * ((drag.lx - e.clientX) / dt) + 0.2 * drag.v;
+    drag.lx = e.clientX; drag.lt = now;
   });
   addEventListener("pointerup", () => {
     if (!drag) return;
-    const moved = drag.moved;
+    const { moved, lt } = drag;
+    let v = performance.now() - lt > 80 ? 0 : drag.v;   // paused before letting go: no glide
     drag = null;
     row.classList.remove("dragging");
     // A drag shouldn't also count as a click on whatever poster it started on.
     if (!moved) return;
+    let last = performance.now();
+    const step = now => {
+      row.scrollLeft += v * (now - last);
+      v *= Math.pow(0.95, (now - last) / 16);
+      last = now;
+      if (Math.abs(v) > 0.02) glide = requestAnimationFrame(step);
+    };
+    glide = requestAnimationFrame(step);
     const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
     addEventListener("click", swallow, { capture: true, once: true });
     setTimeout(() => removeEventListener("click", swallow, { capture: true }), 0);
