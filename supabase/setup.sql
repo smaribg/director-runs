@@ -15,9 +15,12 @@ create table if not exists public.entries (
   movie_id integer not null,              -- TMDB movie id
   watched boolean not null default false,
   note text not null default '',
+  hidden boolean not null default false,  -- removed from the director's list (docs, collaborations…)
   updated_at timestamptz not null default now(),
   primary key (user_id, movie_id)
 );
+-- For databases created before the hidden column existed.
+alter table public.entries add column if not exists hidden boolean not null default false;
 
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users on delete cascade,

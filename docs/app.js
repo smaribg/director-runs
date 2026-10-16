@@ -75,7 +75,7 @@ async function runtimeOf(id) {
 async function loadFilms(personIds, { fresh = false } = {}) {
   const key = "dr-films-" + personIds.join("+");
   const cached = local.get(key, null);
-  if (cached && !fresh && Date.now() - cached.at < 3 * 864e5) return cached.films;
+  if (cached && !fresh && Date.now() - cached.at < 3 * 864e5) return cached.films.filter(f => !f.upcoming);
   const credits = await Promise.all(personIds.map(id => tmdb(`/person/${id}/movie_credits`)));
   const byId = new Map();
   for (const c of credits) for (const m of c.crew || []) if (m.job === "Director" && !m.video) byId.set(m.id, m);
@@ -93,7 +93,7 @@ async function loadFilms(personIds, { fresh = false } = {}) {
     }))
     .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
   local.set(key, { at: Date.now(), films });
-  return films;
+  return films.filter(f => !f.upcoming);
 }
 
 function topFilm(films) {
@@ -104,14 +104,14 @@ function topFilm(films) {
 async function loadData() {
   const [d, e] = await Promise.all([
     sb.from("directors").select("*").order("added_at"),
-    sb.from("entries").select("movie_id, watched, note")
+    sb.from("entries").select("*")
   ]);
   if (d.error) throw d.error;
   if (e.error) throw e.error;
   const old = new Map(directors.map(x => [x.id, x]));
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
   entries.clear();
-  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note });
+  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden });
   render();
   for (const dir of directors) if (!dir.films) fillFilms(dir);
 }
@@ -126,11 +126,13 @@ async function fillFilms(dir) {
 }
 
 async function saveEntry(movieId, patch) {
-  const cur = entries.get(movieId) || { watched: false, note: "" };
+  const cur = entries.get(movieId) || { watched: false, note: "", hidden: false };
   const next = { ...cur, ...patch };
   entries.set(movieId, next);
   render();
-  const { error } = await sb.from("entries").upsert({ user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() });
+  const row = { user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() };
+  if ("hidden" in patch || next.hidden) row.hidden = next.hidden;   // works before the hidden column is added
+  const { error } = await sb.from("entries").upsert(row);
   if (error) { entries.set(movieId, cur); render(); }
 }
 
@@ -196,11 +198,14 @@ async function repairDirector(dir) {
 }
 
 // ---------- Rendering ----------
+const isHidden = f => !!entries.get(f.id)?.hidden;
+const showRemoved = new Set();   // director ids whose removed films are shown
+
 function stats() {
   let all = 0, seen = 0;
   const counted = new Set();
   for (const d of directors) for (const f of d.films || []) {
-    if (f.upcoming || counted.has(f.id)) continue;
+    if (isHidden(f) || counted.has(f.id)) continue;
     counted.add(f.id); all++;
     if (entries.get(f.id)?.watched) seen++;
   }
@@ -217,11 +222,13 @@ function render() {
   }
   const scroll = cards.scrollLeft;
   cards.innerHTML = directors.map(d => {
-    const films = d.films || [];
-    const released = films.filter(f => !f.upcoming);
+    const all = d.films || [];
+    const released = all.filter(f => !isHidden(f));
+    const removed = all.length - released.length;
+    const films = showRemoved.has(d.id) ? all : released;
     const watched = released.filter(f => entries.get(f.id)?.watched).length;
     const done = released.length > 0 && watched === released.length;
-    const top = topFilm(films);
+    const top = topFilm(released);
     const banner = top
       ? `<img src="${IMG}w780${top.backdrop}" alt="Still from ${esc(top.t)}">`
       : `<div class="initials">${esc(initials(d.name))}</div>`;
@@ -229,15 +236,15 @@ function render() {
     if (d.error) body = `<p class="skeleton err">${esc(d.error)}</p>`;
     else if (!d.films) body = `<p class="skeleton">Loading films…</p>`;
     else body = `<div class="posters">${films.map(f => {
-      const e = entries.get(f.id) || {}, w = !!e.watched;
-      if (hideWatched && w) return "";
-      return `<div class="poster${w ? " watched" : ""}${f.upcoming ? " upcoming" : ""}">
-        <button class="art" type="button" data-open="${d.id}|${f.id}" aria-label="${esc(f.t)} (${f.y || "upcoming"})">
+      const e = entries.get(f.id) || {}, w = !!e.watched, h = !!e.hidden;
+      if (hideWatched && w && !h) return "";
+      return `<div class="poster${w ? " watched" : ""}${h ? " removed" : ""}">
+        <button class="art" type="button" data-open="${d.id}|${f.id}" aria-label="${esc(f.t)} (${f.y})">
           ${posterHtml(f)}
-          ${f.upcoming ? `<span class="flag">Upcoming</span>` : e.note ? `<span class="flag">Note</span>` : f.doc ? `<span class="flag">Doc</span>` : ""}
+          ${h ? `<span class="flag">Removed</span>` : e.note ? `<span class="flag">Note</span>` : f.doc ? `<span class="flag">Doc</span>` : ""}
         </button>
-        ${f.upcoming ? "" : `<button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>`}
-        <div class="lbl">${esc(f.t)} <span>${f.y || "TBA"}</span></div>
+        ${h ? "" : `<button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>`}
+        <div class="lbl">${esc(f.t)} <span>${f.y}</span></div>
       </div>`;
     }).join("") || `<p class="hint" style="grid-column:1/-1">All watched. Nice run.</p>`}</div>`;
     return `<article class="card">
@@ -249,7 +256,9 @@ function render() {
         <div class="frames">${released.map(f => `<span class="frame${entries.get(f.id)?.watched ? " on" : ""}" title="${esc(f.t)} (${f.y})"></span>`).join("")}</div>
       </div>
       ${body}
-      <div class="card-foot"><button class="linkbtn" type="button" data-remove="${d.id}">Remove director</button></div>
+      <div class="card-foot">
+        ${removed ? `<button class="linkbtn" type="button" data-showremoved="${d.id}">${showRemoved.has(d.id) ? "Hide" : "Show"} ${removed} removed</button>` : "<span></span>"}
+        <button class="linkbtn" type="button" data-remove="${d.id}">Remove director</button></div>
     </article>`;
   }).join("");
   cards.scrollLeft = scroll;
@@ -273,7 +282,7 @@ function renderAdd() {
   $("results").innerHTML = q || lookupMsg ? html : "";
   const s = suggestion;
   if (!s) { $("suggest").innerHTML = ""; return; }
-  const released = (s.films || []).filter(f => !f.upcoming);
+  const released = s.films || [];
   const top = s.films && topFilm(s.films);
   $("suggest").innerHTML = `<div class="suggest">
     <div class="pic">${top ? `<img src="${IMG}w300${top.backdrop}" alt="">` : ""}</div>
@@ -351,16 +360,17 @@ function openSheet(dirId, movieId) {
   $("sheetBack").innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="big">${posterHtml(f, "w500")}</div>
     <div class="body">
-      <span class="eyebrow">${esc(d.name)} · ${f.y || "Upcoming"}</span>
+      <span class="eyebrow">${esc(d.name)} · ${f.y}</span>
       <h3 id="sheetTitle">${esc(f.t)}</h3>
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
-      ${f.upcoming ? `<p class="hint">Not released yet.</p>` : `
+      ${e.hidden ? `<p class="hint">Removed from this list, so it doesn't count toward progress.</p>` : `
       <label class="small" for="noteInput">Your note</label>
       <textarea id="noteInput" maxlength="500" placeholder="A short thought on it">${esc(e.note || "")}</textarea>`}
       <div class="actions">
-        ${f.upcoming ? "<span></span>" : `<button class="btn" type="button" id="sheetTick"></button>`}
+        ${e.hidden ? "<span></span>" : `<button class="btn" type="button" id="sheetTick"></button>`}
         <button class="btn primary" type="button" id="sheetDone">Done</button>
       </div>
+      <button class="linkbtn sheet-remove" type="button" id="sheetHide">${e.hidden ? "Put back in the list" : "Remove from list"}</button>
     </div></div>`;
   $("sheetBack").hidden = false;
   renderSheetState();
@@ -448,6 +458,8 @@ document.addEventListener("click", e => {
   if (t.dataset.tick) { const id = +t.dataset.tick; return saveEntry(id, { watched: !entries.get(id)?.watched }); }
   if (t.id === "sheetTick" && open) return saveEntry(open.movie, { watched: !entries.get(open.movie)?.watched });
   if (t.id === "sheetDone") return closeSheet();
+  if (t.id === "sheetHide" && open) { const id = open.movie, hide = !entries.get(id)?.hidden; closeSheet(); return saveEntry(id, { hidden: hide }); }
+  if (t.dataset.showremoved) { const id = t.dataset.showremoved; showRemoved.has(id) ? showRemoved.delete(id) : showRemoved.add(id); return render(); }
   if (t.id === "signOutBtn") return sb.auth.signOut().then(() => location.reload());
   if (t.dataset.remove) {
     if (t.classList.contains("armed")) return removeDirector(t.dataset.remove);
