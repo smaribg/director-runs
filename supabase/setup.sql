@@ -17,12 +17,14 @@ create table if not exists public.entries (
   note text not null default '',
   hidden boolean not null default false,  -- removed from the director's list (docs, collaborations…)
   rating smallint check (rating between 1 and 5),
+  poster text,                            -- chosen TMDB poster path; null = TMDB's default
   updated_at timestamptz not null default now(),
   primary key (user_id, movie_id)
 );
 -- For databases created before these columns existed.
 alter table public.entries add column if not exists hidden boolean not null default false;
 alter table public.entries add column if not exists rating smallint check (rating between 1 and 5);
+alter table public.entries add column if not exists poster text;
 
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users on delete cascade,

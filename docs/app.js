@@ -30,7 +30,8 @@ const local = {
 const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 const hue = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
 const placeholder = f => `<div class="ph" style="background:linear-gradient(160deg,hsl(${hue(f.t)} 30% 22%),hsl(${(hue(f.t) + 40) % 360} 25% 10%))">${esc(f.t)}<small>${f.y || "TBA"}</small></div>`;
-const posterHtml = (f, size = "w342") => f.poster ? `<img src="${IMG + size + f.poster}" alt="${esc(f.t)} poster" loading="lazy">` : placeholder(f);
+const posterOf = f => entries.get(f.id)?.poster || f.poster;
+const posterHtml = (f, size = "w342") => posterOf(f) ? `<img src="${IMG + size + posterOf(f)}" alt="${esc(f.t)} poster" loading="lazy">` : placeholder(f);
 
 // ---------- State ----------
 let sb = null, user = null;
@@ -95,6 +96,28 @@ async function loadFilms(personIds, { fresh = false } = {}) {
   return films.filter(f => !f.upcoming);
 }
 
+// IMDb id, TMDB score and runtime for the film sheet; refreshed weekly.
+async function detailsOf(id) {
+  const cache = local.get("dr-md", {});
+  const hit = cache[id];
+  if (hit && Date.now() - hit.at < 7 * 864e5) return hit;
+  const m = await tmdb("/movie/" + id, { append_to_response: "external_ids" });
+  const out = { at: Date.now(), imdb: m.imdb_id || m.external_ids?.imdb_id || "", va: m.vote_average || 0, vc: m.vote_count || 0, rt: m.runtime || 0 };
+  cache[id] = out;
+  local.set("dr-md", cache);
+  return out;
+}
+
+// Director photos for the trophy room (person id -> TMDB profile path).
+const photos = local.get("dr-pp", {});
+async function loadPhotos(ids) {
+  const missing = ids.filter(id => !(id in photos));
+  if (!missing.length) return false;
+  await pool(missing, 4, async id => { photos[id] = (await tmdb("/person/" + id)).profile_path || ""; });
+  local.set("dr-pp", photos);
+  return true;
+}
+
 function topFilm(films) {
   return [...films].filter(f => f.backdrop && !f.upcoming).sort((a, b) => b.votes - a.votes)[0] || null;
 }
@@ -110,7 +133,7 @@ async function loadData() {
   const old = new Map(directors.map(x => [x.id, x]));
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
   entries.clear();
-  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, at: r.updated_at });
+  for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, poster: r.poster || "", at: r.updated_at });
   render();
   for (const dir of directors) if (!dir.films) fillFilms(dir);
 }
@@ -135,6 +158,7 @@ async function saveEntry(movieId, patch) {
   const row = { user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() };
   if ("hidden" in patch || next.hidden) row.hidden = next.hidden;
   if ("rating" in patch || next.rating) row.rating = next.rating || null;   // only sent when used, so older databases keep working
+  if ("poster" in patch || next.poster) row.poster = next.poster || null;
   const { error } = await sb.from("entries").upsert(row);
   if (error) { entries.set(movieId, cur); render(); }
 }
@@ -237,6 +261,7 @@ function renderTrophies(won) {
       next ? `<br>Closest: ${esc(next.d.name)}, ${next.released.length - next.watched} to go.` : ""}</div>`;
     return;
   }
+  loadPhotos(won.flatMap(d => d.person_ids)).then(changed => { if (changed && view === "trophies") shelf(); }).catch(() => {});
   $("trophyView").innerHTML = `<h2 class="tv-title">Trophy room</h2><div class="trophies">${won.map(d => {
     const { released, avg } = progressOf(d);
     const top = topFilm(released);
@@ -244,7 +269,9 @@ function renderTrophies(won) {
     const at = released.map(f => entries.get(f.id)?.at || "").sort().pop();
     return `<article class="tcard">
       <div class="tbanner">${top ? `<img src="${IMG}w780${top.backdrop}" alt="">` : ""}</div>
-      <div class="medal">${TROPHY}</div>
+      <div class="medal${d.person_ids.length > 1 ? " duo" : ""}">${d.person_ids.map(id => photos[id]
+        ? `<img src="${IMG}w185${photos[id]}" alt="">` : `<span class="ini">${esc(initials(d.name))}</span>`).join("")}
+        <span class="medal-badge">${TROPHY}</span></div>
       <div class="tbody">
         <h3>${esc(d.name)}</h3>
         <div class="tmeta">${released.length} films${at ? ` · completed ${fmt(at)}` : ""}</div>
@@ -432,9 +459,10 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
         <button class="nav-btn" type="button" id="sheetPrev" aria-label="Previous film">‹</button>
         <button class="nav-btn" type="button" id="sheetNext" aria-label="Next film">›</button></span>` : ""}
     </div>
-    <div class="big">${posterHtml(f, "w500")}</div>
+    <button class="big" type="button" id="sheetPoster" aria-label="Choose a different poster">${posterHtml(f, "w500")}<span class="big-hint">Change poster</span></button>
     <div class="body">
       <h3 id="sheetTitle">${esc(f.t)} <span class="year">${f.y}</span></h3>
+      <div class="film-meta" id="sheetMeta"><a class="pill" href="https://letterboxd.com/tmdb/${f.id}/" target="_blank" rel="noopener">Letterboxd</a></div>
       ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
         `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
@@ -451,9 +479,54 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
   $("sheetBack").hidden = false;
   renderSheetState();
   ($(focusId) || $("sheetDone")).focus();
+  fillSheetMeta(f);
+}
+async function fillSheetMeta(f) {
+  let m;
+  try { m = await detailsOf(f.id); } catch { return; }
+  if (open?.movie !== f.id) return;
+  const votes = m.vc >= 1000 ? (m.vc / 1000).toFixed(m.vc >= 1e4 ? 0 : 1) + "k" : m.vc;
+  const rt = m.rt ? `${Math.floor(m.rt / 60) ? Math.floor(m.rt / 60) + "h " : ""}${m.rt % 60}m` : "";
+  $("sheetMeta").innerHTML = [
+    m.vc ? `<span class="score" title="${m.vc} votes on TMDB"><b>${m.va.toFixed(1)}</b>/10 TMDB <small>${votes} votes</small></span>` : "",
+    rt ? `<span class="runtime">${rt}</span>` : "",
+    m.imdb ? `<a class="pill" href="https://www.imdb.com/title/${m.imdb}/" target="_blank" rel="noopener">IMDb</a>` : "",
+    `<a class="pill" href="https://letterboxd.com/tmdb/${f.id}/" target="_blank" rel="noopener">Letterboxd</a>`,
+    `<a class="pill" href="https://www.themoviedb.org/movie/${f.id}" target="_blank" rel="noopener">TMDB</a>`
+  ].join("");
+}
+
+// Poster picker: every poster TMDB has for the film, most liked first.
+async function openPicker() {
+  if (!open) return;
+  const movie = open.movie, sheet = document.querySelector(".sheet");
+  const el = document.createElement("div");
+  el.className = "picker"; el.id = "picker";
+  el.innerHTML = `<div class="picker-top"><strong>Choose a poster</strong>
+    <span><button class="btn" type="button" id="pickerReset">Use default</button>
+    <button class="btn primary" type="button" id="pickerClose">Close</button></span></div>
+    <div class="picker-grid"><p class="hint">Loading posters…</p></div>`;
+  sheet.append(el);
+  $("pickerClose").focus();
+  let list = [];
+  try { list = (await tmdb(`/movie/${movie}/images`)).posters || []; } catch {}
+  if (open?.movie !== movie || !el.isConnected) return;
+  list.sort((a, b) => (b.vote_count - a.vote_count) || (b.vote_average - a.vote_average));
+  const cur = posterOf(findFilm(open.dir, movie).f);
+  el.querySelector(".picker-grid").innerHTML = list.length ? list.map(p =>
+    `<button class="pick${p.file_path === cur ? " on" : ""}" type="button" data-poster="${esc(p.file_path)}" aria-label="Poster${p.iso_639_1 ? ", " + p.iso_639_1 : ""}">
+      <img src="${IMG}w185${p.file_path}" alt="" loading="lazy">${p.iso_639_1 ? `<span>${esc(p.iso_639_1)}</span>` : ""}</button>`).join("")
+    : `<p class="hint">TMDB has no other posters for this film.</p>`;
+}
+function choosePoster(path) {
+  if (!open) return;
+  const { dir, movie } = open;
+  saveSheetNote();
+  saveEntry(movie, { poster: path });
+  openSheet(dir, movie);
 }
 function stepSheet(delta, focusId) {
-  if (!open) return;
+  if (!open || $("picker")) return;
   const d = directors.find(x => x.id === open.dir), list = d ? sheetList(d) : [];
   const i = list.findIndex(x => x.id === open.movie);
   if (i < 0 || list.length < 2) return;
@@ -552,6 +625,10 @@ document.addEventListener("click", e => {
   if (t.dataset.tick) { const id = +t.dataset.tick; return saveEntry(id, { watched: !entries.get(id)?.watched }); }
   if (t.id === "sheetTick" && open) return saveEntry(open.movie, { watched: !entries.get(open.movie)?.watched });
   if (t.id === "sheetDone") return closeSheet();
+  if (t.id === "sheetPoster") return openPicker();
+  if (t.id === "pickerClose") return $("picker")?.remove(), $("sheetPoster")?.focus();
+  if (t.id === "pickerReset") return choosePoster("");
+  if (t.dataset.poster) return choosePoster(t.dataset.poster);
   if (t.id === "sheetPrev" || t.id === "sheetNext") return stepSheet(t.id === "sheetNext" ? 1 : -1, t.id);
   if (t.id === "trophyBtn") return setView(view === "trophies" ? "runs" : "trophies");
   // Rating a film marks it watched; tapping the current rating clears it.
@@ -568,7 +645,8 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (!open) { if (e.key === "Escape" && view === "trophies") setView("runs"); return; }
-  if (e.key === "Escape") closeSheet();
+  if (e.key === "Escape") { if ($("picker")) { $("picker").remove(); $("sheetPoster")?.focus(); } else closeSheet(); return; }
+  if ($("picker")) return;
   if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.id !== "noteInput") { e.preventDefault(); stepSheet(e.key === "ArrowRight" ? 1 : -1); }
   if (e.key === "Enter" && e.target.id === "noteInput" && !e.shiftKey) { e.preventDefault(); closeSheet(); }
 });

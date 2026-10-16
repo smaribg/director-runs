@@ -51,9 +51,12 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 .tbanner { height: 170px; background: var(--raise); position: relative; }
 .tbanner img { width: 100%; height: 100%; object-fit: cover; display: block; filter: sepia(.35) saturate(1.1); }
 .tbanner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 40%, var(--surface)); }
-.medal { position: absolute; top: 132px; left: 18px; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: var(--accent-ink); background: radial-gradient(circle at 35% 30%, #ffe3a3, var(--accent) 55%, #b9822a); box-shadow: 0 0 0 4px var(--surface), 0 0 30px -4px rgba(240,181,74,.8); }
-.medal svg { width: 34px; height: 34px; }
-.tbody { padding: 40px 18px 18px; display: flex; flex-direction: column; gap: 6px; }
+.medal { position: absolute; top: 112px; left: 18px; display: flex; }
+.medal > img, .medal > .ini { width: 92px; height: 92px; border-radius: 50%; object-fit: cover; object-position: center 20%; background: var(--raise); display: grid; place-items: center; font-family: var(--marquee); font-weight: 900; font-size: 2rem; color: var(--muted); box-shadow: 0 0 0 3px var(--accent), 0 0 0 7px var(--surface), 0 0 34px -4px rgba(240,181,74,.8); }
+.medal.duo > :nth-child(2) { margin-left: -22px; }
+.medal-badge { position: absolute; right: -6px; bottom: -2px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--accent-ink); background: radial-gradient(circle at 35% 30%, #ffe3a3, var(--accent) 55%, #b9822a); box-shadow: 0 0 0 3px var(--surface); }
+.medal-badge svg { width: 19px; height: 19px; }
+.tbody { padding: 50px 18px 18px; display: flex; flex-direction: column; gap: 6px; }
 .tbody h3 { margin: 0; font-family: var(--marquee); font-weight: 800; font-size: 2rem; line-height: .95; text-transform: uppercase; }
 .tmeta { font-family: var(--mono); font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .tavg { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
@@ -178,12 +181,33 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 /* Film sheet */
 .sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; }
 /* Fixed size, so the arrows stay put while stepping between films; the plot scrolls instead. */
-.sheet { width: min(100%, 880px); height: min(620px, calc(100vh - 32px)); overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; display: grid; grid-template-columns: 300px 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 16px 28px; padding: 22px 26px 26px; }
+.sheet { position: relative; width: min(100%, 880px); height: min(620px, calc(100vh - 32px)); overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; display: grid; grid-template-columns: 300px 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 16px 28px; padding: 22px 26px 26px; }
 .sheet-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .sheet-nav { display: flex; gap: 8px; }
 .nav-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--raise); font-size: 1.3rem; line-height: 1; display: grid; place-items: center; }
 .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
-.sheet .big { position: relative; aspect-ratio: 2 / 3; border-radius: 14px; overflow: hidden; background: var(--raise); align-self: start; box-shadow: 0 20px 40px -20px rgba(0,0,0,.9); }
+.sheet .big { all: unset; cursor: pointer; position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; border-radius: 14px; overflow: hidden; background: var(--raise); align-self: start; box-shadow: 0 20px 40px -20px rgba(0,0,0,.9); }
+.sheet .big:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.big-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); white-space: nowrap; font-size: .74rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; background: rgba(14,13,12,.8); opacity: 0; transition: opacity .15s; }
+.sheet .big:hover .big-hint, .sheet .big:focus-visible .big-hint { opacity: 1; }
+@media (hover: none) { .big-hint { opacity: .85; } }
+.film-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .82rem; color: var(--muted); min-height: 28px; }
+.score b { font-family: var(--marquee); font-weight: 800; font-size: 1.25rem; color: var(--fg); }
+.score small { font-family: var(--mono); font-size: .68rem; margin-left: 2px; }
+.runtime { font-family: var(--mono); font-size: .74rem; margin-right: 4px; }
+.pill { display: inline-block; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--raise); color: var(--fg); text-decoration: none; font-size: .76rem; font-weight: 600; }
+.pill:hover { border-color: var(--accent); color: var(--accent); }
+.picker { position: absolute; inset: 0; z-index: 3; background: var(--surface); display: flex; flex-direction: column; gap: 14px; padding: 22px 26px; }
+.picker-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.picker-top strong { font-family: var(--marquee); font-weight: 800; font-size: 1.6rem; text-transform: uppercase; }
+.picker-top span { display: flex; gap: 8px; }
+.picker-top .btn { padding: 8px 12px; }
+.picker-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; align-content: start; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.pick { all: unset; cursor: pointer; position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--raise); box-shadow: 0 0 0 1px var(--line); }
+.pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pick:hover, .pick:focus-visible { box-shadow: 0 0 0 2px var(--fg); }
+.pick.on { box-shadow: 0 0 0 3px var(--accent); }
+.pick span { position: absolute; left: 4px; top: 4px; font-family: var(--mono); font-size: .6rem; text-transform: uppercase; padding: 1px 5px; border-radius: 99px; background: rgba(14,13,12,.8); }
 .sheet .big img { width: 100%; height: 100%; object-fit: cover; }
 .sheet .body { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
 .sheet .body > * { flex: none; }
@@ -244,6 +268,6 @@ footer img { height: 12px; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
