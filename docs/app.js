@@ -763,7 +763,12 @@ function scheduleRecs() { clearTimeout(recsTimer); recsTimer = setTimeout(() => 
 async function loadRecs() {
   if (directors.some(d => !d.films && !d.error)) return scheduleRecs();
   const rating = x => entries.get(x.f.id)?.rating || 3;
-  const seeds = watchedFilms().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes).slice(0, 8);
+  // Up to three favourites from each director, so one director doesn't drown out the rest.
+  const perDir = new Map();
+  for (const x of watchedFilms().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes)) {
+    const l = perDir.get(x.d.id) || []; if (l.length < 3) l.push(x); perDir.set(x.d.id, l);
+  }
+  const seeds = [...perDir.values()].flat().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes).slice(0, 12);
   const have = new Set(directors.flatMap(d => d.person_ids));
   if (!seeds.length) { recs = []; return renderRecs(); }
   const key = seeds.map(x => x.f.id + ":" + rating(x)).join(",") + "|" + [...have].sort().join(",");
@@ -775,9 +780,9 @@ async function loadRecs() {
     const r = await tmdb(`/movie/${s.f.id}/recommendations`);
     (r.results || []).forEach((m, i) => {
       // Skip obscure titles: TMDB's recommendations get noisy below a few hundred votes.
-      if (known.has(m.id) || (m.vote_count || 0) < 800) return;
+      if (known.has(m.id) || (m.vote_count || 0) < 800 || (m.vote_average || 0) < 7) return;
       const x = movies.get(m.id) || { id: m.id, score: 0, because: new Map() };
-      const w = rating(s) * (1 - i / 40) * Math.log10(m.vote_count);
+      const w = rating(s) * (1 - i / 40) * Math.log10(m.vote_count) * (m.vote_average - 6.5);
       x.score += w; x.because.set(s.f.t, (x.because.get(s.f.t) || 0) + w);
       movies.set(m.id, x);
     });
