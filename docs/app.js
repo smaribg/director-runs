@@ -468,26 +468,27 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
         <button class="nav-btn" type="button" id="sheetPrev" aria-label="Previous film">‹</button>
         <button class="nav-btn" type="button" id="sheetNext" aria-label="Next film">›</button></span>` : ""}
     </div>
-    <button class="big" type="button" id="sheetPoster" aria-label="Choose a different poster">${posterHtml(f, "w500")}<span class="big-hint">Change poster</span></button>
+    <div class="poster-col">
+      <button class="big" type="button" id="sheetPoster" aria-label="Choose a different poster">${posterHtml(f, "w500")}<span class="big-hint">Change poster</span></button>
+      <div class="links" id="sheetLinks">${lbLink(f.id)}</div>
+    </div>
     <div class="body">
       <div class="head">
         <h3 id="sheetTitle">${esc(f.t)}</h3>
-        <div class="film-meta"><span>${f.y}</span><span id="sheetRuntime"></span><span class="links" id="sheetLinks">${lbLink(f.id)}</span></div>
+        <div class="film-meta"><span>${f.y}</span><span id="sheetRuntime"></span></div>
       </div>
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
       <div class="spacer"></div>
       ${e.hidden ? `<p class="hint take">Removed from this list, so it doesn't count toward progress.</p>` : `
       <section class="take" aria-label="Your take">
-        <div class="take-row">
-          <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
-            `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>
-          <button class="watch-toggle" type="button" id="sheetTick"></button>
-        </div>
+        <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
+          `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>
         <textarea id="noteInput" maxlength="500" placeholder="Your note: a short thought on it" aria-label="Your note">${esc(e.note || "")}</textarea>
       </section>`}
       <div class="sheet-foot">
         <button class="linkbtn" type="button" id="sheetHide">${e.hidden ? "Put back in the list" : "Remove from list"}</button>
-        <button class="btn primary" type="button" id="sheetDone">Done</button>
+        <span class="foot-right">${e.hidden ? "" : `<button class="btn watch-toggle" type="button" id="sheetTick"></button>`}
+        <button class="btn primary" type="button" id="sheetDone">Done</button></span>
       </div>
     </div></div>`;
   $("sheetBack").hidden = false;
