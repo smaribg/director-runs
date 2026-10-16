@@ -438,6 +438,7 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
       ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
         `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
+      <div class="spacer"></div>
       ${e.hidden ? `<p class="hint">Removed from this list, so it doesn't count toward progress.</p>` : `
       <label class="small" for="noteInput">Your note</label>
       <textarea id="noteInput" maxlength="500" placeholder="A short thought on it">${esc(e.note || "")}</textarea>`}
