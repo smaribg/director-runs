@@ -160,7 +160,7 @@ async function saveEntry(movieId, patch) {
   if ("rating" in patch || next.rating) row.rating = next.rating || null;   // only sent when used, so older databases keep working
   if ("poster" in patch || next.poster) row.poster = next.poster || null;
   const { error } = await sb.from("entries").upsert(row);
-  if (error) { entries.set(movieId, cur); render(); }
+  if (error) { entries.set(movieId, cur); render(); if (open?.movie === movieId) renderSheetState(); notify("Couldn't save that change. " + error.message); }
 }
 
 async function addDirector(name, personIds) {
@@ -292,9 +292,18 @@ function setView(v) {
 }
 
 let toastTimer = null;
+function notify(msg) {
+  const t = $("toast");
+  t.dataset.kind = "note";
+  t.innerHTML = `<span>${esc(msg)}</span>`;
+  t.hidden = false; t.classList.remove("show"); void t.offsetWidth; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
+}
 function celebrate(d) {
   const { released, avg } = progressOf(d);
   const t = $("toast");
+  t.dataset.kind = "trophy";
   t.innerHTML = `<span class="toast-icon">${TROPHY}</span><span><b>Trophy unlocked</b>${esc(d.name)} · all ${released.length} films${avg ? ` · avg ★ ${avg.toFixed(1)}` : ""}</span>`;
   t.hidden = false; t.classList.remove("show"); void t.offsetWidth; t.classList.add("show");
   clearTimeout(toastTimer);
@@ -509,7 +518,7 @@ async function openPicker() {
   sheet.append(el);
   $("pickerClose").focus();
   let list = [];
-  try { list = (await tmdb(`/movie/${movie}/images`)).posters || []; } catch {}
+  try { list = (await tmdb(`/movie/${movie}/images`, { include_image_language: "en" })).posters || []; } catch {}
   if (open?.movie !== movie || !el.isConnected) return;
   list.sort((a, b) => (b.vote_count - a.vote_count) || (b.vote_average - a.vote_average));
   const cur = posterOf(findFilm(open.dir, movie).f);
@@ -613,7 +622,7 @@ async function start() {
 // ---------- Events ----------
 document.addEventListener("click", e => {
   if (e.target.id === "sheetBack") return closeSheet();
-  if (e.target.closest?.("#toast")) { $("toast").hidden = true; return setView("trophies"); }
+  if (e.target.closest?.("#toast")) { $("toast").hidden = true; return $("toast").dataset.kind === "trophy" && setView("trophies"); }
   const t = e.target.closest("button");
   if (!t) return;
   if (t.dataset.pick) { const p = searchResults[+t.dataset.pick]; return p && addDirector(p.name, p.ids); }
