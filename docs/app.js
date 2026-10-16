@@ -414,16 +414,27 @@ function findFilm(dirId, movieId) {
   const f = d?.films?.find(x => x.id === movieId);
   return f ? { d, f } : null;
 }
-function openSheet(dirId, movieId) {
+// The films the sheet steps through: what the director's card is showing.
+function sheetList(d) {
+  const all = d.films || [];
+  return showRemoved.has(d.id) ? all : all.filter(f => !isHidden(f));
+}
+function openSheet(dirId, movieId, focusId = "sheetDone") {
   const hit = findFilm(dirId, movieId);
   if (!hit) return;
   open = { dir: dirId, movie: movieId };
   const { d, f } = hit, e = entries.get(f.id) || {};
+  const list = sheetList(d), i = list.findIndex(x => x.id === f.id);
   $("sheetBack").innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-top">
+      <span class="eyebrow">${esc(d.name)}${i >= 0 ? ` · ${i + 1} of ${list.length}` : ""}</span>
+      ${list.length > 1 && i >= 0 ? `<span class="sheet-nav">
+        <button class="nav-btn" type="button" id="sheetPrev" aria-label="Previous film">‹</button>
+        <button class="nav-btn" type="button" id="sheetNext" aria-label="Next film">›</button></span>` : ""}
+    </div>
     <div class="big">${posterHtml(f, "w500")}</div>
     <div class="body">
-      <span class="eyebrow">${esc(d.name)} · ${f.y}</span>
-      <h3 id="sheetTitle">${esc(f.t)}</h3>
+      <h3 id="sheetTitle">${esc(f.t)} <span class="year">${f.y}</span></h3>
       ${e.hidden ? "" : `<div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
         `<button type="button" data-rate="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</div>`}
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
@@ -438,7 +449,21 @@ function openSheet(dirId, movieId) {
     </div></div>`;
   $("sheetBack").hidden = false;
   renderSheetState();
-  $("sheetDone").focus();
+  ($(focusId) || $("sheetDone")).focus();
+}
+function stepSheet(delta, focusId) {
+  if (!open) return;
+  const d = directors.find(x => x.id === open.dir), list = d ? sheetList(d) : [];
+  const i = list.findIndex(x => x.id === open.movie);
+  if (i < 0 || list.length < 2) return;
+  saveSheetNote();
+  openSheet(d.id, list[(i + delta + list.length) % list.length].id, focusId);
+}
+function saveSheetNote() {
+  const ta = $("noteInput");
+  if (!ta || !open) return;
+  const val = ta.value.trim().slice(0, 500);
+  if ((entries.get(open.movie)?.note || "") !== val) saveEntry(open.movie, { note: val });
 }
 function renderSheetState() {
   const b = $("sheetTick");
@@ -449,11 +474,9 @@ function renderSheetState() {
 }
 function closeSheet() {
   if (!open) return;
-  const ta = $("noteInput"), movie = open.movie;
-  const val = ta ? ta.value.trim().slice(0, 500) : null;
+  saveSheetNote();
   open = null;
   $("sheetBack").hidden = true; $("sheetBack").innerHTML = "";
-  if (val !== null && (entries.get(movie)?.note || "") !== val) saveEntry(movie, { note: val });
 }
 
 // ---------- Screens ----------
@@ -528,6 +551,7 @@ document.addEventListener("click", e => {
   if (t.dataset.tick) { const id = +t.dataset.tick; return saveEntry(id, { watched: !entries.get(id)?.watched }); }
   if (t.id === "sheetTick" && open) return saveEntry(open.movie, { watched: !entries.get(open.movie)?.watched });
   if (t.id === "sheetDone") return closeSheet();
+  if (t.id === "sheetPrev" || t.id === "sheetNext") return stepSheet(t.id === "sheetNext" ? 1 : -1, t.id);
   if (t.id === "trophyBtn") return setView(view === "trophies" ? "runs" : "trophies");
   // Rating a film marks it watched; tapping the current rating clears it.
   if (t.dataset.rate && open) { const n = +t.dataset.rate, cur = entries.get(open.movie)?.rating || 0;
@@ -544,9 +568,19 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if (!open) { if (e.key === "Escape" && view === "trophies") setView("runs"); return; }
   if (e.key === "Escape") closeSheet();
+  if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.id !== "noteInput") { e.preventDefault(); stepSheet(e.key === "ArrowRight" ? 1 : -1); }
   if (e.key === "Enter" && e.target.id === "noteInput" && !e.shiftKey) { e.preventDefault(); closeSheet(); }
 });
 $("search").addEventListener("input", onSearch);
+// Swipe sideways on the film sheet to step through the director's films.
+let swipe = null;
+$("sheetBack").addEventListener("touchstart", e => { swipe = e.target.closest("textarea") ? null : { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+$("sheetBack").addEventListener("touchend", e => {
+  if (!swipe) return;
+  const dx = e.changedTouches[0].clientX - swipe.x, dy = e.changedTouches[0].clientY - swipe.y;
+  swipe = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) stepSheet(dx < 0 ? 1 : -1);
+}, { passive: true });
 $("cards").addEventListener("scroll", updateNav, { passive: true });
 addEventListener("resize", updateNav);
 // Pick up changes made on another device when you come back to this tab.
