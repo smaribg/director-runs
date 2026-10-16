@@ -376,7 +376,6 @@ function render() {
           <span class="hover-title" aria-hidden="true">${esc(f.t)} (${f.y})</span>
           ${posterHtml(f)}
           ${h ? `<span class="flag">Removed</span>` : e.note ? `<span class="flag">Note</span>` : f.doc ? `<span class="flag">Doc</span>` : ""}
-          ${h ? "" : starsHtml(e.rating, "on-poster")}
         </button>
         ${h ? "" : `<button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>`}
       </div>`;
@@ -532,6 +531,7 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
       </div>
     </div></div>`;
   $("sheetBack").hidden = false;
+  lockScroll();
   renderSheetState();
   ($(focusId) || $("sheetDone")).focus();
   fillSheetMeta(f);
@@ -605,6 +605,11 @@ function closeSheet() {
   saveSheetNote();
   open = null;
   $("sheetBack").hidden = true; $("sheetBack").innerHTML = "";
+  lockScroll();
+}
+// Keep the page behind an open film sheet or tier list from scrolling.
+function lockScroll() {
+  document.documentElement.classList.toggle("modal-open", !$("sheetBack").hidden || !$("tierBack").hidden);
 }
 
 // ---------- Tier lists ----------
@@ -638,6 +643,7 @@ function openTier(dirId, fresh = false) {
   tier = { dir: dirId, draft, sel: null, fresh };
   renderTier();
   $("tierBack").hidden = false;
+  lockScroll();
   $("tierDone").focus();
 }
 
@@ -685,6 +691,7 @@ function closeTier() {
   saveTier();
   tier = null;
   $("tierBack").hidden = true; $("tierBack").innerHTML = "";
+  lockScroll();
   shelf();
 }
 

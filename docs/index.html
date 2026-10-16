@@ -169,7 +169,10 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: f
 .poster.watched .tick { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .flag { position: absolute; left: 5px; bottom: 5px; font-size: .6rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: rgba(14,13,12,.75); color: var(--fg); padding: 1px 6px; border-radius: 99px; }
 .hover-title { position: absolute; inset: auto 0 0 0; z-index: 2; padding: 22px 7px 7px; font-size: .72rem; font-weight: 600; line-height: 1.2; color: var(--fg); background: linear-gradient(to top, rgba(14,13,12,.95) 40%, transparent); opacity: 0; transform: translateY(4px); transition: opacity .15s, transform .15s; pointer-events: none; }
-.poster .art:hover .hover-title, .poster .art:focus-visible .hover-title { opacity: 1; transform: none; }
+.poster .art:focus-visible .hover-title { opacity: 1; transform: none; }
+@media (hover: hover) { .poster .art:hover .hover-title { opacity: 1; transform: none; } }
+@media (hover: none) { .hover-title { display: none; } }
+html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 .card-foot { display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px 14px; }
 .linkbtn { border: none; background: none; color: var(--muted); font-size: .8rem; padding: 4px 0; }
 .linkbtn:hover, .linkbtn.armed { color: var(--danger); }
@@ -228,11 +231,11 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: f
 @media (max-width: 640px) {
   .sheet-back { align-items: flex-end; padding: 0; }
   /* Phone: one scrolling column, poster beside the title, everything else full width. */
-  .sheet { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: none; align-content: start; gap: 14px 16px; padding: 16px 16px max(20px, env(safe-area-inset-bottom, 0px)); border-radius: 24px 24px 0 0; height: 92vh; height: 92dvh; overflow-y: auto; overscroll-behavior: contain; }
+  .sheet { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: max-content; align-content: start; gap: 14px 16px; padding: 16px 16px max(20px, env(safe-area-inset-bottom, 0px)); border-radius: 24px 24px 0 0; height: 92vh; height: 92dvh; overflow-y: auto; overscroll-behavior: contain; }
   .sheet .body { display: contents; }
   .sheet .head { grid-column: 2; align-self: center; }
   .sheet .body > .overview, .sheet .take, .sheet-foot { grid-column: 1 / -1; }
-  .sheet .body > .overview { overflow: visible; min-height: 0; padding-right: 0; }
+  .sheet .body > .overview { overflow: visible; min-height: auto; padding-right: 0; }
   .sheet .body > .spacer { display: none; }
   .sheet-foot { flex-wrap: wrap; }
   .sheet-foot .foot-right { margin-left: auto; }
@@ -387,6 +390,6 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
