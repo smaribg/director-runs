@@ -948,6 +948,31 @@ $("sheetBack").addEventListener("touchend", e => {
   if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) stepSheet(dx < 0 ? 1 : -1);
 }, { passive: true });
 $("cards").addEventListener("scroll", updateNav, { passive: true });
+// Drag the director row sideways with the mouse (touch screens already swipe natively).
+{
+  const row = $("cards");
+  let drag = null;
+  row.addEventListener("pointerdown", e => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input, textarea")) return;
+    drag = { x: e.clientX, left: row.scrollLeft, moved: false };
+  });
+  addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 6) return;
+    if (!drag.moved) { drag.moved = true; row.classList.add("dragging"); }
+    row.scrollLeft = drag.left - dx;
+  });
+  addEventListener("pointerup", () => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    row.classList.remove("dragging");
+    // A drag shouldn't also count as a click on whatever poster it started on.
+    if (moved) addEventListener("click", ev => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+  });
+  row.addEventListener("dragstart", e => e.preventDefault());
+}
 addEventListener("resize", updateNav);
 // Pick up changes made on another device when you come back to this tab.
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && user && tmdbToken && !open && !tier) loadData().catch(() => {}); });

@@ -102,6 +102,9 @@ header { padding-block: 28px 8px; display: flex; align-items: flex-start; justif
 /* Card row */
 .rowwrap { position: relative; margin-top: 22px; }
 .row { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x proximity; padding-block: 6px 28px; padding-left: var(--side); scroll-padding-left: var(--side); align-items: flex-start; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+@media (hover: hover) and (pointer: fine) { .row { cursor: grab; } }
+.row.dragging { cursor: grabbing; scroll-snap-type: none; user-select: none; }
+.row.dragging .art { pointer-events: none; }
 .row::after { content: ""; flex: 0 0 max(4px, calc(var(--side) - 16px)); }
 .nav { position: absolute; top: 120px; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: rgba(23,21,19,.88); backdrop-filter: blur(6px); font-size: 1.2rem; z-index: 2; display: none; }
 .nav:hover { border-color: var(--accent); color: var(--accent); }
@@ -373,6 +376,6 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
