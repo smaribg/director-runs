@@ -49,7 +49,14 @@ async function tmdb(path, params = {}) {
   const v3 = /^[0-9a-f]{32}$/i.test(tmdbToken);
   if (v3) u.searchParams.set("api_key", tmdbToken);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-  const res = await fetch(u, { headers: v3 ? { accept: "application/json" } : { accept: "application/json", Authorization: "Bearer " + tmdbToken } });
+  const headers = v3 ? { accept: "application/json" } : { accept: "application/json", Authorization: "Bearer " + tmdbToken };
+  let res;
+  // TMDB rate-limits bursts (many directors loading at once); wait and try again rather than give up.
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(u, { headers });
+    if (res.status !== 429 || attempt >= 4) break;
+    await new Promise(r => setTimeout(r, (Number(res.headers.get("retry-after")) || 1) * 1000 * (attempt + 1)));
+  }
   if (!res.ok) { const e = new Error("TMDB " + res.status); e.status = res.status; throw e; }
   return res.json();
 }
@@ -74,7 +81,7 @@ async function runtimeOf(id) {
 
 // A director's films: everything they're credited as Director on, minus shorts and video releases.
 async function loadFilms(personIds, { fresh = false } = {}) {
-  const key = "dr-films-" + personIds.join("+");
+  const key = "dr-films2-" + personIds.join("+");
   const cached = local.get(key, null);
   if (cached && !fresh && Date.now() - cached.at < 3 * 864e5) return cached.films.filter(f => !f.upcoming);
   const credits = await Promise.all(personIds.map(id => tmdb(`/person/${id}/movie_credits`)));
@@ -85,7 +92,8 @@ async function loadFilms(personIds, { fresh = false } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const films = list
     .map((m, i) => ({ m, rt: runtimes[i] }))
-    .filter(({ rt }) => !(rt && rt < MIN_RUNTIME))
+    // Shorts: a known runtime under the limit, or no runtime on TMDB and next to no votes (how most shorts look there).
+    .filter(({ m, rt }) => !(rt && rt < MIN_RUNTIME) && !(rt === 0 && (m.vote_count || 0) < 10))
     .map(({ m }) => ({
       id: m.id, t: m.title, y: (m.release_date || "").slice(0, 4), date: m.release_date || "",
       poster: m.poster_path, backdrop: m.backdrop_path, votes: m.vote_count || 0,
@@ -93,7 +101,8 @@ async function loadFilms(personIds, { fresh = false } = {}) {
       doc: (m.genre_ids || []).includes(99)
     }))
     .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
-  local.set(key, { at: Date.now(), films });
+  // If some runtimes couldn't be fetched, shorts may have slipped through: cache briefly so it's retried soon.
+  local.set(key, { at: runtimes.includes(null) ? Date.now() - 3 * 864e5 + 600e3 : Date.now(), films });
   return films.filter(f => !f.upcoming);
 }
 
