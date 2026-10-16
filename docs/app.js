@@ -27,6 +27,8 @@ const local = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
+// Drop film lists cached by older versions of the site.
+try { Object.keys(localStorage).filter(k => /^dr-films2?-/.test(k)).forEach(k => localStorage.removeItem(k)); } catch {}
 const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 const hue = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
 const placeholder = f => `<div class="ph" style="background:linear-gradient(160deg,hsl(${hue(f.t)} 30% 22%),hsl(${(hue(f.t) + 40) % 360} 25% 10%))">${esc(f.t)}<small>${f.y || "TBA"}</small></div>`;
@@ -44,6 +46,10 @@ let searchSeq = 0, searchResults = [], lookupMsg = "";
 let open = null;               // {dir, movie}
 
 // ---------- TMDB ----------
+let tmdbBusy = 0;
+const tmdbQueue = [];
+const tmdbSlot = () => tmdbBusy < 6 ? (tmdbBusy++, Promise.resolve()) : new Promise(r => tmdbQueue.push(r));
+const tmdbFree = () => { const next = tmdbQueue.shift(); next ? next() : tmdbBusy--; };
 async function tmdb(path, params = {}) {
   const u = new URL("https://api.themoviedb.org/3" + path);
   const v3 = /^[0-9a-f]{32}$/i.test(tmdbToken);
@@ -51,12 +57,17 @@ async function tmdb(path, params = {}) {
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const headers = v3 ? { accept: "application/json" } : { accept: "application/json", Authorization: "Bearer " + tmdbToken };
   let res;
-  // TMDB rate-limits bursts (many directors loading at once); wait and try again rather than give up.
-  for (let attempt = 0; ; attempt++) {
-    res = await fetch(u, { headers });
-    if (res.status !== 429 || attempt >= 4) break;
-    await new Promise(r => setTimeout(r, (Number(res.headers.get("retry-after")) || 1) * 1000 * (attempt + 1)));
-  }
+  // TMDB rate-limits bursts (many directors loading at once), and its 429s often arrive without CORS headers,
+  // so they surface as network errors. Keep few requests in flight and retry either kind.
+  await tmdbSlot();
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { res = await fetch(u, { headers }); } catch (err) { if (attempt >= 4) throw err; res = null; }
+      if (res && res.status !== 429) break;
+      if (res && attempt >= 4) break;
+      await new Promise(r => setTimeout(r, 700 * (attempt + 1)));
+    }
+  } finally { tmdbFree(); }
   if (!res.ok) { const e = new Error("TMDB " + res.status); e.status = res.status; throw e; }
   return res.json();
 }
@@ -74,14 +85,15 @@ async function runtimeOf(id) {
   const cache = local.get("dr-rt", {});
   if (id in cache) return cache[id];
   const m = await tmdb("/movie/" + id);
-  cache[id] = m.runtime || 0;
-  local.set("dr-rt", cache);
-  return cache[id];
+  const fresh = local.get("dr-rt", {});
+  fresh[id] = m.runtime || 0;
+  local.set("dr-rt", fresh);
+  return fresh[id];
 }
 
 // A director's films: everything they're credited as Director on, minus shorts and video releases.
 async function loadFilms(personIds, { fresh = false } = {}) {
-  const key = "dr-films2-" + personIds.join("+");
+  const key = "dr-films3-" + personIds.join("+");
   const cached = local.get(key, null);
   if (cached && !fresh && Date.now() - cached.at < 3 * 864e5) return cached.films.filter(f => !f.upcoming);
   const credits = await Promise.all(personIds.map(id => tmdb(`/person/${id}/movie_credits`)));
