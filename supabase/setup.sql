@@ -8,6 +8,7 @@ create table if not exists public.directors (
   person_ids integer[] not null,          -- TMDB person ids (two for the Coen brothers)
   added_at timestamptz not null default now(),
   tiers jsonb,                            -- tier list: {"S": [movie ids], "A": [...], ...}
+  position integer,                       -- order of the cards; null = after the ordered ones, by added_at
   unique (user_id, name)
 );
 
@@ -29,6 +30,7 @@ alter table public.entries add column if not exists rating smallint check (ratin
 alter table public.entries add column if not exists poster text;
 alter table public.entries add column if not exists watched_on date;
 alter table public.directors add column if not exists tiers jsonb;
+alter table public.directors add column if not exists position integer;
 
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users on delete cascade,

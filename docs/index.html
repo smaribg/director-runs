@@ -173,7 +173,12 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: f
 @media (hover: hover) { .poster .art:hover .hover-title { opacity: 1; transform: none; } }
 @media (hover: none) { .hover-title { display: none; } }
 html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: none; }
-.card-foot { display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px 14px; }
+.card-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 16px 14px; }
+.foot-left { display: flex; align-items: center; gap: 12px; }
+.move { display: flex; gap: 4px; }
+.move-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--raise); color: var(--muted); font-size: 1.05rem; line-height: 1; display: grid; place-items: center; padding: 0; }
+.move-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.move-btn:disabled { opacity: .3; cursor: default; }
 .linkbtn { border: none; background: none; color: var(--muted); font-size: .8rem; padding: 4px 0; }
 .linkbtn:hover, .linkbtn.armed { color: var(--danger); }
 .linkbtn.armed { font-weight: 600; }
@@ -390,6 +395,6 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

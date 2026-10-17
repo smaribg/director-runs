@@ -153,7 +153,9 @@ async function loadData() {
   if (d.error) throw d.error;
   if (e.error) throw e.error;
   const old = new Map(directors.map(x => [x.id, x]));
-  directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }));
+  // Cards you've arranged come first in your order; the rest follow by when they were added.
+  directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }))
+    .sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity));
   entries.clear();
   for (const r of e.data) entries.set(r.movie_id, { watched: r.watched, note: r.note, hidden: !!r.hidden, rating: r.rating || 0, poster: r.poster || "", on: r.watched_on || "", at: r.updated_at });
   render();
@@ -212,6 +214,24 @@ async function addDirector(name, personIds) {
 async function removeDirector(id) {
   const { error } = await sb.from("directors").delete().eq("id", id);
   if (!error) { directors = directors.filter(d => d.id !== id); render(); }
+}
+
+// Swap a director with its neighbour (delta -1 = left, 1 = right) and save the new order.
+async function moveDirector(id, delta) {
+  const i = directors.findIndex(d => d.id === id), j = i + delta;
+  if (i < 0 || j < 0 || j >= directors.length) return;
+  [directors[i], directors[j]] = [directors[j], directors[i]];
+  const changed = directors.filter((d, k) => d.position !== k);
+  changed.forEach(d => { d.position = directors.indexOf(d); });
+  render();
+  const btn = document.querySelector(`[data-move="${id}|${delta}"]`);
+  (btn && !btn.disabled ? btn : document.querySelector(`[data-move^="${id}|"]:not(:disabled)`))?.focus();
+  $("cards").children[j]?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  const results = await Promise.all(changed.map(d => sb.from("directors").update({ position: d.position }).eq("id", d.id)));
+  const error = results.find(r => r.error)?.error;
+  if (error) notify(/position/.test(error.message)
+    ? "Couldn't save the order: run supabase/setup.sql in Supabase to add the position column."
+    : "Couldn't save the order. " + error.message);
 }
 
 // First run: bring over the three directors from the old page, with Perfect Blue watched.
@@ -273,6 +293,7 @@ function progressOf(d) {
 function completedIds() { return new Set(directors.filter(d => progressOf(d).done).map(d => d.id)); }
 
 let view = "runs";   // "runs" (director cards), "calendar" or "trophies"
+let startAtEnd = true;
 
 function shelf() {
   const won = directors.filter(d => progressOf(d).done);
@@ -356,8 +377,10 @@ function render() {
     cards.innerHTML = `<div class="empty"><strong>No directors yet</strong>Search above or pick one at random to start your first run.</div>`;
     return updateNav();
   }
-  const scroll = cards.scrollLeft;
-  cards.innerHTML = directors.map(d => {
+  // The first time the cards appear, start at the end of the row so the last director is in view.
+  const scroll = startAtEnd ? Infinity : cards.scrollLeft;
+  startAtEnd = false;
+  cards.innerHTML = directors.map((d, idx) => {
     const all = d.films || [];
     const { released, watched, done, avg } = progressOf(d);
     const removed = all.length - released.length;
@@ -391,11 +414,16 @@ function render() {
       </div>
       ${body}
       <div class="card-foot">
-        ${removed ? `<button class="linkbtn" type="button" data-showremoved="${d.id}">${showRemoved.has(d.id) ? "Hide" : "Show"} ${removed} removed</button>` : "<span></span>"}
+        <span class="foot-left">
+          ${directors.length > 1 ? `<span class="move">
+            <button class="move-btn" type="button" data-move="${d.id}|-1" ${idx === 0 ? "disabled" : ""} aria-label="Move ${esc(d.name)} left">‹</button>
+            <button class="move-btn" type="button" data-move="${d.id}|1" ${idx === directors.length - 1 ? "disabled" : ""} aria-label="Move ${esc(d.name)} right">›</button></span>` : ""}
+          ${removed ? `<button class="linkbtn" type="button" data-showremoved="${d.id}">${showRemoved.has(d.id) ? "Hide" : "Show"} ${removed} removed</button>` : ""}
+        </span>
         <button class="linkbtn" type="button" data-remove="${d.id}">Remove director</button></div>
     </article>`;
   }).join("");
-  cards.scrollLeft = scroll;
+  cards.scrollLeft = Math.min(scroll, cards.scrollWidth);
   updateNav();
   if (open) renderSheetState();
 }
@@ -932,6 +960,7 @@ document.addEventListener("click", e => {
   if (t.dataset.rate && open) { const n = +t.dataset.rate, cur = entries.get(open.movie)?.rating || 0;
     return saveEntry(open.movie, n === cur ? { rating: 0 } : { rating: n, watched: true }); }
   if (t.id === "sheetHide" && open) { const id = open.movie, hide = !entries.get(id)?.hidden; closeSheet(); return saveEntry(id, { hidden: hide }); }
+  if (t.dataset.move) { const [id, delta] = t.dataset.move.split("|"); return moveDirector(id, +delta); }
   if (t.dataset.showremoved) { const id = t.dataset.showremoved; showRemoved.has(id) ? showRemoved.delete(id) : showRemoved.add(id); return render(); }
   if (t.id === "signOutBtn") return sb.auth.signOut().then(() => location.reload());
   if (t.dataset.remove) {
