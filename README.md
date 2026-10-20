@@ -1,4 +1,4 @@
-# Director Runs
+# Movie Challenges
 
 Track your way through directors' filmographies. Film data and images come from TMDB; your watched list and notes are saved in Supabase, so every device shows the same progress.
 

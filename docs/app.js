@@ -1,4 +1,4 @@
-// Director Runs — filmographies from TMDB, progress saved per user in Supabase.
+// Movie Challenges — filmographies from TMDB, progress saved per user in Supabase.
 
 const IMG = "https://image.tmdb.org/t/p/";
 const MIN_RUNTIME = 40;   // minutes; anything shorter with a known runtime counts as a short
