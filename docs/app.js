@@ -1282,7 +1282,25 @@ function screenSignIn(msg = "") {
     e.preventDefault();
     const email = $("email").value.trim();
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
-    screenSignIn(error ? "!" + error.message : "Check " + email + " for the link. Open it on this device.");
+    error ? screenSignIn("!" + error.message) : screenCode(email);
+  });
+}
+
+// The email has a link and a code. The code is for when the link would open somewhere else,
+// like an iPhone home-screen app, which doesn't share Safari's sign-in.
+function screenCode(email, msg = "") {
+  showScreen(`<form class="panel" id="codeForm"><h2>Check your email</h2>
+    <p>We sent a sign-in email to <b>${esc(email)}</b>. Open the link on this device, or type the code from the email here.</p>
+    <input class="field code" id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required placeholder="123456" aria-label="Sign-in code">
+    <button class="btn primary" type="submit">Sign in</button>
+    <button class="linkbtn" type="button" id="codeBack">Use a different email</button>
+    ${msg ? `<p class="err">${esc(msg)}</p>` : ""}</form>`);
+  $("code").focus();
+  $("codeBack").addEventListener("click", () => screenSignIn());
+  $("codeForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const { error } = await sb.auth.verifyOtp({ email, token: $("code").value.trim(), type: "email" });
+    if (error) screenCode(email, /expired|invalid/i.test(error.message) ? "That code didn't work. It may have expired, so send a new email and try the newest code." : error.message);
   });
 }
 
