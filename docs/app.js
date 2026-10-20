@@ -40,6 +40,7 @@ const posterHtml = (f, size = "w342") => posterOf(f) ? `<img src="${IMG + size +
 let sb = null, user = null;
 let tmdbToken = null;
 let directors = [];            // rows from Supabase plus .films (loaded from TMDB) and .error
+let challenges = [], challengesErr = "";   // decade challenges; the error is set when the table is missing
 const entries = new Map();     // movie_id -> {watched, note}
 let suggestion = null;         // {name, person_ids, films, loading}
 let searchSeq = 0, searchResults = [], lookupMsg = "";
@@ -146,12 +147,16 @@ function topFilm(films) {
 
 // ---------- Supabase data ----------
 async function loadData() {
-  const [d, e] = await Promise.all([
+  const [d, e, c] = await Promise.all([
     sb.from("directors").select("*").order("added_at"),
-    sb.from("entries").select("*")
+    sb.from("entries").select("*"),
+    sb.from("challenges").select("*").order("created_at")
   ]);
   if (d.error) throw d.error;
   if (e.error) throw e.error;
+  // The challenges table came later; without it everything else still works.
+  challenges = c.error ? [] : c.data.map(r => ({ ...r, picks: r.picks || {} }));
+  challengesErr = c.error ? c.error.message : "";
   const old = new Map(directors.map(x => [x.id, x]));
   // Cards you've arranged come first in your order; the rest follow by when they were added.
   directors = d.data.map(r => ({ ...r, films: old.get(r.id)?.films || null }))
@@ -181,11 +186,7 @@ async function saveEntry(movieId, patch) {
   const before = completedIds();
   entries.set(movieId, next);
   render();
-  const fresh = directors.find(d => completedIds().has(d.id) && !before.has(d.id));
-  if (fresh) {
-    celebrate(fresh);
-    setTimeout(() => { if (!tier && view === "runs") { closeSheet(); openTier(fresh.id, true); } }, 1600);
-  }
+  announceNew(before);
   if ("watched" in patch || "rating" in patch || "hidden" in patch) scheduleRecs();
   const row = { user_id: user.id, movie_id: movieId, watched: next.watched, note: next.note, updated_at: new Date().toISOString() };
   if ("hidden" in patch || next.hidden) row.hidden = next.hidden;
@@ -290,63 +291,210 @@ function progressOf(d) {
   return { released, watched: watched.length, done: !!d.films && released.length > 0 && watched.length === released.length,
            avg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0 };
 }
-function completedIds() { return new Set(directors.filter(d => progressOf(d).done).map(d => d.id)); }
-
-let view = "runs";   // "runs" (director cards), "calendar" or "trophies"
-let startAtEnd = true;
-
-function shelf() {
-  const won = directors.filter(d => progressOf(d).done);
-  $("views").hidden = !directors.length;
-  $("trophyCount").textContent = won.length;
-  document.querySelectorAll("#views [data-view]").forEach(b => {
-    b.classList.toggle("on", b.dataset.view === view);
-    b.setAttribute("aria-pressed", b.dataset.view === view);
-  });
-  if (view === "trophies") renderTrophies(won);
-  if (view === "calendar") renderCalendar();
+function completedIds() {
+  return new Set([...directors.filter(d => progressOf(d).done).map(d => d.id),
+                  ...challenges.filter(c => challengeProgress(c).done).map(c => "c:" + c.id)]);
+}
+// Celebrate anything completed since `before`; a finished director then gets a tier list.
+function announceNew(before) {
+  const id = [...completedIds()].find(x => !before.has(x));
+  const fresh = id && sourceById(id);
+  if (!fresh) return;
+  celebrate(fresh);
+  if (!fresh.kind) setTimeout(() => { if (!tier && view === "runs") { closeSheet(); openTier(fresh.id, true); } }, 1600);
 }
 
-function renderTrophies(won) {
-  const fmt = iso => iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
-  if (!won.length) {
-    const next = directors.map(d => ({ d, ...progressOf(d) })).filter(x => x.d.films && x.released.length)
-      .sort((a, b) => (a.released.length - a.watched) - (b.released.length - b.watched))[0];
-    $("trophyView").innerHTML = `<div class="empty"><strong>No trophies yet</strong>Watch every film by a director to win one.${
-      next ? `<br>Closest: ${esc(next.d.name)}, ${next.released.length - next.watched} to go.` : ""}</div>`;
-    return;
+let view = "home";        // "home", "runs" (director cards), "decades" or "stats"
+let statsTab = "trophies";  // "trophies", "numbers" or "calendar"
+let appOn = false;        // signed in with the app showing (not a sign-in or setup screen)
+let startAtEnd = true;
+const VIEW_TITLES = { runs: "Director Runs", decades: "Decade Challenges", stats: "My stats" };
+const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+
+function shelf() {
+  const won = completedIds().size;
+  $("statsBtn").hidden = !appOn;
+  $("statsBtn").classList.toggle("on", view === "stats");
+  $("trophyCount").textContent = won;
+  $("statsBtn").setAttribute("aria-label", `My stats, ${plural(won, "trophy", "trophies")}`);
+  if (!appOn) return;
+  if (view === "home") renderHome();
+  if (view === "decades") renderDecades();
+  if (view === "stats") renderStats();
+}
+
+function applyView() {
+  const off = v => !appOn || view !== v;
+  $("homeView").hidden = off("home");
+  $("addPanel").hidden = off("runs"); $("rowwrap").hidden = off("runs");
+  $("decView").hidden = off("decades"); $("decWrap").hidden = off("decades");
+  $("statsView").hidden = off("stats");
+  $("crumb").hidden = !appOn || view === "home";
+  $("crumb").innerHTML = `<button class="linkbtn back" type="button" data-go="home">‹ All challenges</button><h2>${VIEW_TITLES[view] || ""}</h2>`;
+  document.title = VIEW_TITLES[view] ? `${VIEW_TITLES[view]} · Movie Challenges` : "Movie Challenges";
+}
+
+// Each view has its own address (#runs, #decades, #stats/calendar…), so the back button and bookmarks work.
+const viewHash = () => view === "home" ? "" : "#" + view + (view === "stats" ? "/" + statsTab : "");
+function viewFromHash() {
+  const [v, t] = location.hash.slice(1).split("/");
+  if (["trophies", "numbers", "calendar"].includes(t)) statsTab = t;
+  return VIEW_TITLES[v] ? v : "home";
+}
+function setView(v, { push = true } = {}) {
+  view = VIEW_TITLES[v] ? v : "home";
+  if (push && location.hash !== viewHash()) history.pushState(null, "", viewHash() || location.pathname + location.search);
+  applyView();
+  shelf();
+  if (view === "runs") updateNav();
+  if (view === "stats" && statsTab === "calendar") scrollCalendar();
+  window.scrollTo({ top: 0 });
+}
+function setStatsTab(t) {
+  statsTab = t;
+  history.replaceState(null, "", viewHash());
+  renderStats();
+  if (t === "calendar") scrollCalendar();
+}
+const scrollCalendar = () => { const w = document.querySelector(".cal-scroll"); if (w) w.scrollLeft = w.scrollWidth; };
+
+// ---------- Home ----------
+function renderHome() {
+  const runs = directors.map(progressOf);
+  const seen = runs.reduce((a, p) => a + p.watched, 0), total = runs.reduce((a, p) => a + p.released.length, 0);
+  const decs = challenges.map(challengeProgress);
+  const decDone = decs.filter(p => p.done).length;
+  const runBg = topFilm(directors.flatMap(d => d.films || []));
+  let decBg = topFilm(challenges.flatMap(challengeFilms));
+  if (!decBg) {
+    const cached = local.get("dr-dec-1960", null);
+    decBg = cached && topFilm(cached.films);
+    if (!cached) decadePool(1960).then(() => { if (view === "home") renderHome(); }).catch(() => {});
   }
-  loadPhotos(won.flatMap(d => d.person_ids)).then(changed => { if (changed && view === "trophies") shelf(); }).catch(() => {});
-  $("trophyView").innerHTML = `<h2 class="tv-title">Trophy room</h2><div class="trophies">${won.map(d => {
-    const { released, avg } = progressOf(d);
-    const top = topFilm(released);
-    const fav = released.map(f => ({ f, r: entries.get(f.id)?.rating || 0 })).filter(x => x.r).sort((a, b) => b.r - a.r || b.f.votes - a.f.votes)[0];
-    const at = released.map(f => entries.get(f.id)?.at || "").sort().pop();
-    return `<article class="tcard">
-      <div class="tbanner">${top ? `<img src="${IMG}w780${top.backdrop}" alt="">` : ""}</div>
+  const card = (go, n, title, desc, stats, bg) => `<button class="hcard" type="button" data-go="${go}">
+      <span class="hbg">${bg ? `<img src="${IMG}w1280${bg.backdrop}" alt="">` : ""}</span>
+      <span class="hbody"><span class="eyebrow">Challenge ${n}</span><strong>${title}</strong>
+        <span class="hdesc">${desc}</span><span class="hstats">${stats}</span></span></button>`;
+  $("homeView").innerHTML = `<div class="home-grid">
+    ${card("runs", "01", "Director Runs", "Watch every film a director has made.",
+      directors.length ? `${plural(directors.length, "director")} · ${seen} / ${total} films · ${plural(directors.filter(d => progressOf(d).done).length, "trophy", "trophies")}` : "Start your first run",
+      runBg)}
+    ${card("decades", "02", "Decade Challenges", "Pick a span of decades and watch one film from each.",
+      challenges.length ? `${plural(challenges.length, "challenge")} · ${decs.reduce((a, p) => a + p.watched, 0)} / ${decs.reduce((a, p) => a + p.slots.length, 0)} films · ${plural(decDone, "trophy", "trophies")}` : "Start your first challenge",
+      decBg)}
+  </div>`;
+}
+
+// ---------- My stats ----------
+function renderStats() {
+  document.querySelectorAll("[data-stab]").forEach(b => {
+    const on = b.dataset.stab === statsTab;
+    b.classList.toggle("on", on); b.setAttribute("aria-selected", on);
+  });
+  $("trophyView").hidden = statsTab !== "trophies"; $("numbersView").hidden = statsTab !== "numbers"; $("calView").hidden = statsTab !== "calendar";
+  if (statsTab === "trophies") renderTrophies();
+  if (statsTab === "numbers") renderNumbers();
+  if (statsTab === "calendar") renderCalendar();
+}
+
+// Favourite, completion date and best still for a finished set of films.
+function setSummary(films) {
+  const rated = films.map(f => entries.get(f.id)?.rating || 0).filter(Boolean);
+  return {
+    top: topFilm(films),
+    avg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0,
+    fav: films.map(f => ({ f, r: entries.get(f.id)?.rating || 0 })).filter(x => x.r).sort((a, b) => b.r - a.r || b.f.votes - a.f.votes)[0],
+    at: films.map(f => entries.get(f.id)?.at || "").sort().pop()
+  };
+}
+
+function renderTrophies() {
+  const fmt = iso => iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
+  const won = directors.filter(d => progressOf(d).done);
+  const wonDec = challenges.filter(c => challengeProgress(c).done);
+  if (won.length) loadPhotos(won.flatMap(d => d.person_ids)).then(changed => { if (changed && view === "stats" && statsTab === "trophies") renderTrophies(); }).catch(() => {});
+  const body = (s, extra) => `
+      <div class="tbody">
+        <h3>${esc(s.title)}</h3>
+        <div class="tmeta">${s.count}${s.at ? ` · completed ${fmt(s.at)}` : ""}</div>
+        ${s.avg ? `<div class="tavg">${starsHtml(Math.round(s.avg))}<span>${s.avg.toFixed(1)} average</span></div>` : ""}
+        ${s.fav ? `<div class="tfav"><span>Favourite</span>${esc(s.fav.f.t)} <small>${s.fav.f.y}</small></div>` : ""}
+        ${extra}
+      </div>`;
+  const banner = top => `<div class="tbanner">${top ? `<img src="${IMG}w780${top.backdrop}" alt="">` : ""}</div>`;
+  const dirCards = won.map(d => {
+    const { released } = progressOf(d), s = setSummary(released);
+    return `<article class="tcard">${banner(s.top)}
       <div class="medal${d.person_ids.length > 1 ? " duo" : ""}">${d.person_ids.map(id => photos[id]
         ? `<img src="${IMG}w185${photos[id]}" alt="">` : `<span class="ini">${esc(initials(d.name))}</span>`).join("")}
         <span class="medal-badge">${TROPHY}</span></div>
-      <div class="tbody">
-        <h3>${esc(d.name)}</h3>
-        <div class="tmeta">${released.length} films${at ? ` · completed ${fmt(at)}` : ""}</div>
-        ${avg ? `<div class="tavg">${starsHtml(Math.round(avg))}<span>${avg.toFixed(1)} average</span></div>` : ""}
-        ${fav ? `<div class="tfav"><span>Favourite</span>${esc(fav.f.t)} <small>${fav.f.y}</small></div>` : ""}
-        ${miniTiers(d)}
-        <button class="btn tier-open" type="button" data-tieropen="${d.id}">${hasTiers(d) ? "Edit tier list" : "Make a tier list"}</button>
-      </div>
+      ${body({ ...s, title: d.name, count: plural(released.length, "film") }, `${miniTiers(d)}
+        <button class="btn tier-open" type="button" data-tieropen="${d.id}">${hasTiers(d) ? "Edit tier list" : "Make a tier list"}</button>`)}
     </article>`;
-  }).join("")}</div>`;
+  }).join("");
+  const decCards = wonDec.map(c => {
+    const films = challengeFilms(c), s = setSummary(films);
+    return `<article class="tcard">${banner(s.top)}
+      <div class="medal"><span class="ini dec">${shortDec(c.start_decade)}<i>to</i>${shortDec(c.end_decade)}</span>
+        <span class="medal-badge">${TROPHY}</span></div>
+      ${body({ ...s, title: challengeTitle(c), count: plural(films.length, "decade") }, `<div class="dec-films">${decadesOf(c).map(d => {
+        const f = c.picks[d];
+        return `<span class="mini" title="${decadeLabel(d)}: ${esc(f.t)} (${f.y})">${posterHtml(f, "w92")}</span>`;
+      }).join("")}</div>`)}
+    </article>`;
+  }).join("");
+  // Nothing won yet in a section: point at the closest one instead.
+  const closestDir = directors.map(d => ({ d, ...progressOf(d) })).filter(x => x.d.films && x.released.length)
+    .sort((a, b) => (a.released.length - a.watched) - (b.released.length - b.watched))[0];
+  const closestDec = challenges.map(c => ({ c, ...challengeProgress(c) }))
+    .sort((a, b) => (a.slots.length - a.watched) - (b.slots.length - b.watched))[0];
+  const section = (title, cards, n, emptyMsg) => `<section class="tsec"><h2 class="tv-title">${title}<small>${n}</small></h2>
+    ${cards ? `<div class="trophies">${cards}</div>` : `<div class="empty"><strong>No trophies yet</strong>${emptyMsg}</div>`}</section>`;
+  $("trophyView").innerHTML =
+    section("Director Runs", dirCards, won.length, `Watch every film by a director to win one.${closestDir
+      ? `<br>Closest: ${esc(closestDir.d.name)}, ${closestDir.released.length - closestDir.watched} to go.` : ""}`) +
+    section("Decade Challenges", decCards, wonDec.length, `Watch one film from every decade in a challenge to win one.${closestDec
+      ? `<br>Closest: ${esc(challengeTitle(closestDec.c))}, ${closestDec.slots.length - closestDec.watched} to go.` : ""}`);
 }
 
-function setView(v) {
-  view = v;
-  $("addPanel").hidden = v !== "runs"; $("rowwrap").hidden = v !== "runs";
-  $("trophyView").hidden = v !== "trophies"; $("calView").hidden = v !== "calendar";
-  shelf();
-  if (v === "runs") updateNav();
-  if (v === "calendar") { const w = document.querySelector(".cal-scroll"); if (w) w.scrollLeft = w.scrollWidth; }
-  window.scrollTo({ top: 0 });
+const rtTried = new Set();
+// Totals plus two small bar lists: your ratings and the decades your films come from.
+function renderNumbers() {
+  const all = watchedFilms();
+  const rt = local.get("dr-rt", {}), md = local.get("dr-md", {});
+  // Look up runtimes we don't have yet, once per visit (a failed lookup isn't retried in a loop).
+  const missing = all.filter(x => !(x.f.id in rt) && !md[x.f.id]?.rt && !rtTried.has(x.f.id)).map(x => x.f.id);
+  missing.forEach(id => rtTried.add(id));
+  if (missing.length) pool(missing, 4, runtimeOf).then(() => { if (view === "stats" && statsTab === "numbers") renderNumbers(); });
+  let mins = 0, timed = 0;
+  for (const x of all) { const m = rt[x.f.id] || md[x.f.id]?.rt || 0; if (m) { mins += m; timed++; } }
+  const rated = all.map(x => entries.get(x.f.id)?.rating || 0).filter(Boolean);
+  const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0;
+  const byDec = new Map();
+  for (const x of all) { const d = decadeOf(+x.f.y); if (d) byDec.set(d, (byDec.get(d) || 0) + 1); }
+  const decs = DECADES.filter(d => d >= Math.min(...byDec.keys()) && d <= Math.max(...byDec.keys()));
+  const most = directors.map(d => ({ d, n: progressOf(d).watched })).sort((a, b) => b.n - a.n)[0];
+  const bars = (rows, label) => {
+    const max = Math.max(1, ...rows.map(r => r[1]));
+    return rows.map(([k, n]) => `<div class="bar-row" title="${esc(k)}: ${plural(n, "film")}">
+      <span class="bar-label">${esc(k)}</span>
+      <span class="bar-track">${n ? `<span class="bar" style="width:${(n / max * 100).toFixed(1)}%"></span>` : ""}</span>
+      <span class="bar-val">${n}</span></div>`).join("") || `<p class="hint">${label}</p>`;
+  };
+  const tile = (big, label, sub = "") => `<div class="tile"><b>${big}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
+  $("numbersView").innerHTML = `
+    <div class="tiles">
+      ${tile(all.length, "films watched")}
+      ${tile(Math.round(mins / 60), "hours watched", timed < all.length ? `counting ${timed} of ${all.length} films` : "")}
+      ${tile(avg ? "★ " + avg.toFixed(1) : "–", "average rating", rated.length ? `over ${plural(rated.length, "rated film")}` : "")}
+      ${tile(completedIds().size, "trophies won")}
+      ${most?.n ? tile(most.n, esc(most.d.name), "your most watched director") : ""}
+    </div>
+    <div class="charts">
+      <div class="chart"><h3>Your ratings</h3>${rated.length ? bars([5, 4, 3, 2, 1].map(n => ["★".repeat(n), rated.filter(r => r === n).length]), "")
+        : `<p class="hint">Rate films in their details to see your spread here.</p>`}</div>
+      <div class="chart"><h3>Films by decade</h3>${bars(decs.map(d => [decadeLabel(d), byDec.get(d) || 0]), "Watched films show up here by decade.")}</div>
+    </div>`;
 }
 
 let toastTimer = null;
@@ -359,10 +507,10 @@ function notify(msg) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
 }
 function celebrate(d) {
-  const { released, avg } = progressOf(d);
+  const films = d.kind ? challengeFilms(d.c) : progressOf(d).released, { avg } = setSummary(films);
   const t = $("toast");
   t.dataset.kind = "trophy";
-  t.innerHTML = `<span class="toast-icon">${TROPHY}</span><span><b>Trophy unlocked</b>${esc(d.name)} · all ${released.length} films${avg ? ` · avg ★ ${avg.toFixed(1)}` : ""}</span>`;
+  t.innerHTML = `<span class="toast-icon">${TROPHY}</span><span><b>Trophy unlocked</b>${esc(d.name)} · all ${films.length} films${avg ? ` · avg ★ ${avg.toFixed(1)}` : ""}</span>`;
   t.hidden = false; t.classList.remove("show"); void t.offsetWidth; t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
@@ -510,12 +658,13 @@ async function pickRandom() {
 
 // ---------- Film sheet ----------
 function findFilm(dirId, movieId) {
-  const d = directors.find(x => x.id === dirId);
+  const d = sourceById(dirId);
   const f = d?.films?.find(x => x.id === movieId);
   return f ? { d, f } : null;
 }
 // The films the sheet steps through: what the director's card is showing.
 function sheetList(d) {
+  if (d.kind) return d.films;
   const all = d.films || [];
   return showRemoved.has(d.id) ? all : all.filter(f => !isHidden(f));
 }
@@ -525,6 +674,8 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
   open = { dir: dirId, movie: movieId };
   const { d, f } = hit, e = entries.get(f.id) || {};
   const list = sheetList(d), i = list.findIndex(x => x.id === f.id);
+  // "Removed" only applies to director lists; a challenge pick can be swapped instead.
+  const hid = !d.kind && e.hidden;
   $("sheetBack").innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-top">
       <span class="eyebrow">${esc(d.name)}${i >= 0 ? ` · ${i + 1} of ${list.length}` : ""}</span>
@@ -543,7 +694,7 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
       </div>
       ${f.overview ? `<p class="overview">${esc(f.overview)}</p>` : ""}
       <div class="spacer"></div>
-      ${e.hidden ? `<p class="hint take">Removed from this list, so it doesn't count toward progress.</p>` : `
+      ${hid ? `<p class="hint take">Removed from this list, so it doesn't count toward progress.</p>` : `
       <section class="take" aria-label="Your take">
         <div class="take-row">
           <div class="rate" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n =>
@@ -553,8 +704,9 @@ function openSheet(dirId, movieId, focusId = "sheetDone") {
         <textarea id="noteInput" maxlength="500" placeholder="Your note: a short thought on it" aria-label="Your note">${esc(e.note || "")}</textarea>
       </section>`}
       <div class="sheet-foot">
-        <button class="linkbtn" type="button" id="sheetHide">${e.hidden ? "Put back in the list" : "Remove from list"}</button>
-        <span class="foot-right">${e.hidden ? "" : `<button class="btn watch-toggle" type="button" id="sheetTick"></button>`}
+        ${d.kind ? `<button class="linkbtn" type="button" id="sheetSwap">Swap film</button>`
+          : `<button class="linkbtn" type="button" id="sheetHide">${hid ? "Put back in the list" : "Remove from list"}</button>`}
+        <span class="foot-right">${hid ? "" : `<button class="btn watch-toggle" type="button" id="sheetTick"></button>`}
         <button class="btn primary" type="button" id="sheetDone">Done</button></span>
       </div>
     </div></div>`;
@@ -607,7 +759,7 @@ function choosePoster(path) {
 }
 function stepSheet(delta, focusId) {
   if (!open || $("picker")) return;
-  const d = directors.find(x => x.id === open.dir), list = d ? sheetList(d) : [];
+  const d = sourceById(open.dir), list = d ? sheetList(d) : [];
   const i = list.findIndex(x => x.id === open.movie);
   if (i < 0 || list.length < 2) return;
   saveSheetNote();
@@ -637,7 +789,7 @@ function closeSheet() {
 }
 // Keep the page behind an open film sheet or tier list from scrolling.
 function lockScroll() {
-  document.documentElement.classList.toggle("modal-open", !$("sheetBack").hidden || !$("tierBack").hidden);
+  document.documentElement.classList.toggle("modal-open", !$("sheetBack").hidden || !$("tierBack").hidden || !$("slotBack").hidden);
 }
 
 // ---------- Tier lists ----------
@@ -748,6 +900,10 @@ function watchedFilms() {
     const e = entries.get(f.id);
     if (e?.watched && !e.hidden && !seen.has(f.id)) seen.set(f.id, { f, d, on: e.on || "" });
   }
+  for (const c of challenges) {
+    const src = challengeSource(c);
+    for (const f of src.films) { const e = entries.get(f.id); if (e?.watched && !seen.has(f.id)) seen.set(f.id, { f, d: src, on: e.on || "" }); }
+  }
   return [...seen.values()];
 }
 
@@ -811,6 +967,237 @@ function renderCalendar() {
     </div>` : ""}`;
 }
 
+// ---------- Decade challenges ----------
+// One film from each decade in a span; 1910 stands for everything before 1920.
+const DECADES = Array.from({ length: 12 }, (_, i) => 1910 + i * 10);
+const MIN_DECADES = 4;
+const decadeLabel = d => d === 1910 ? "Pre-1920s" : d + "s";
+const shortDec = d => d === 1910 ? "<1920" : "’" + String(d).slice(2) + "s";
+const decadeOf = y => y ? Math.max(1910, Math.floor(y / 10) * 10) : null;
+const decadesOf = c => DECADES.filter(d => d >= c.start_decade && d <= c.end_decade);
+const challengeTitle = c => `${decadeLabel(c.start_decade)} – ${decadeLabel(c.end_decade)}`;
+const challengeFilms = c => decadesOf(c).map(d => c.picks[d]).filter(Boolean);
+const challengeSource = c => ({ id: "c:" + c.id, kind: "decades", c, name: challengeTitle(c), films: challengeFilms(c) });
+function sourceById(id) {
+  if (!String(id).startsWith("c:")) return directors.find(x => x.id === id);
+  const c = challenges.find(x => "c:" + x.id === id);
+  return c && challengeSource(c);
+}
+function challengeProgress(c) {
+  const slots = decadesOf(c), films = challengeFilms(c);
+  const watched = films.filter(f => entries.get(f.id)?.watched).length;
+  return { slots, films, watched, done: films.length === slots.length && watched === slots.length };
+}
+const snap = m => ({ id: m.id, t: m.title, y: (m.release_date || "").slice(0, 4), date: m.release_date || "",
+  poster: m.poster_path || "", backdrop: m.backdrop_path || "", votes: m.vote_count || 0, overview: m.overview || "" });
+
+// The best-known feature films of a decade, for random picks and the picker's suggestions; cached a week.
+async function decadePool(d) {
+  const key = "dr-dec-" + d, hit = local.get(key, null);
+  if (hit && Date.now() - hit.at < 7 * 864e5) return hit.films;
+  const params = { sort_by: "vote_count.desc", "with_runtime.gte": 60, "vote_count.gte": d < 1930 ? 40 : 200,
+    "primary_release_date.lte": d === 2020 ? today() : `${d + 9}-12-31`, include_adult: false };
+  if (d !== 1910) params["primary_release_date.gte"] = `${d}-01-01`;
+  const pages = await Promise.all([1, 2, 3].map(page => tmdb("/discover/movie", { ...params, page }).catch(() => ({ results: [] }))));
+  const byId = new Map();
+  for (const m of pages.flatMap(p => p.results || [])) if (m.poster_path && !byId.has(m.id)) byId.set(m.id, snap(m));
+  const films = [...byId.values()];
+  if (films.length) local.set(key, { at: Date.now(), films });
+  return films;
+}
+
+// A random well-known film from the decade you haven't seen, and that isn't already in this challenge.
+async function randomPick(c, d) {
+  const used = new Set(challengeFilms(c).map(f => f.id));
+  const options = (await decadePool(d)).filter(f => !used.has(f.id));
+  const unseen = options.filter(f => !entries.get(f.id)?.watched);
+  const list = unseen.length ? unseen : options;
+  return list[Math.floor(Math.random() * list.length)] || null;
+}
+
+async function savePicks(c, picks) {
+  const prev = c.picks, before = completedIds();
+  c.picks = picks;
+  render();
+  announceNew(before);
+  const { error } = await sb.from("challenges").update({ picks }).eq("id", c.id);
+  if (error) { c.picks = prev; render(); notify("Couldn't save that pick. " + error.message); }
+}
+function setPick(c, d, film) {
+  const picks = { ...c.picks };
+  if (film) picks[d] = film; else delete picks[d];
+  return savePicks(c, picks);
+}
+async function fillRandom(c) {
+  const picks = { ...c.picks };
+  for (const d of decadesOf(c)) if (!picks[d]) {
+    const f = await randomPick({ ...c, picks }, d).catch(() => null);
+    if (f) picks[d] = f;
+  }
+  return savePicks(c, picks);
+}
+
+let decFrom = 1950, decTo = 2020;
+const decSpan = () => DECADES.filter(d => d >= decFrom && d <= decTo).length;
+async function createChallenge() {
+  if (decSpan() < MIN_DECADES) return;
+  const { data, error } = await sb.from("challenges").insert({ kind: "decades", start_decade: decFrom, end_decade: decTo, picks: {} }).select().single();
+  if (error) return notify("Couldn't start the challenge. " + error.message);
+  challenges.push({ ...data, picks: data.picks || {} });
+  render();
+  requestAnimationFrame(() => { const r = $("decCards"); r.scrollTo({ left: r.scrollWidth, behavior: "smooth" }); });
+}
+async function removeChallenge(id) {
+  const { error } = await sb.from("challenges").delete().eq("id", id);
+  if (error) return notify("Couldn't remove the challenge. " + error.message);
+  challenges = challenges.filter(c => c.id !== id);
+  render();
+}
+
+function updateDecForm() {
+  const n = decSpan(), btn = $("decCreate");
+  if (!btn) return;
+  btn.disabled = n < MIN_DECADES;
+  $("decHint").textContent = decTo < decFrom ? "The end decade has to come after the start."
+    : n < MIN_DECADES ? `That's ${plural(n, "decade")}. A challenge spans at least ${MIN_DECADES}.`
+    : `${n} decades, one film from each.`;
+}
+
+function renderDecades() {
+  if (challengesErr) {
+    $("decNew").innerHTML = `<section class="panel setup"><h2>One more step</h2>
+      <p>Decade challenges need a new table. In Supabase, open <b>SQL Editor</b>, run <code>supabase/setup.sql</code> again (it's safe to re-run), then reload.</p>
+      <p class="hint">${esc(challengesErr)}</p></section>`;
+    $("decCards").innerHTML = "";
+    return;
+  }
+  // Leave the form alone while you're using it.
+  if (!$("decNew").contains(document.activeElement) || !$("decCreate")) {
+    const opts = sel => DECADES.map(d => `<option value="${d}"${d === sel ? " selected" : ""}>${decadeLabel(d)}</option>`).join("");
+    $("decNew").innerHTML = `<div class="dec-new">
+      <span class="recs-label">New challenge</span>
+      <div class="add-row">
+        <label>From <select class="field" id="decFrom">${opts(decFrom)}</select></label>
+        <label>to <select class="field" id="decTo">${opts(decTo)}</select></label>
+        <button class="btn primary" type="button" id="decCreate">Start challenge</button>
+      </div>
+      <p class="hint" id="decHint"></p></div>`;
+    updateDecForm();
+  }
+  const row = $("decCards"), scroll = row.scrollLeft;
+  row.innerHTML = challenges.length ? challenges.map(c => {
+    const { slots, films, watched, done } = challengeProgress(c);
+    const top = topFilm(films), avg = setSummary(films.filter(f => entries.get(f.id)?.watched)).avg;
+    const empty = slots.length - films.length;
+    const tiles = slots.map(d => {
+      const f = c.picks[d];
+      if (!f) return `<div class="poster"><button class="art slot" type="button" data-slot="${c.id}|${d}" aria-label="Pick a film from the ${decadeLabel(d)}">
+          <span class="slot-dec">${decadeLabel(d)}</span><span class="slot-plus" aria-hidden="true">+</span><span class="slot-hint">Pick a film</span></button></div>`;
+      const w = !!entries.get(f.id)?.watched;
+      return `<div class="poster${w ? " watched" : ""}">
+        <button class="art" type="button" data-open="c:${c.id}|${f.id}" aria-label="${decadeLabel(d)}: ${esc(f.t)} (${f.y})">
+          <span class="hover-title" aria-hidden="true">${esc(f.t)} (${f.y})</span>
+          ${posterHtml(f)}<span class="flag">${decadeLabel(d)}</span>
+        </button>
+        <button class="tick" type="button" data-tick="${f.id}" aria-pressed="${w}" aria-label="${w ? "Mark as not watched" : "Mark as watched"}: ${esc(f.t)}">✓</button>
+      </div>`;
+    }).join("");
+    return `<article class="card${done ? " done" : ""}">
+      <div class="banner">${top ? `<img src="${IMG}w780${top.backdrop}" alt="Still from ${esc(top.t)}">` : `<div class="initials">${shortDec(c.start_decade)}</div>`}
+        <div class="cap"><h2>${esc(challengeTitle(c))}</h2><div class="count"><b>${watched}</b> / ${slots.length}</div></div>
+        ${done ? `<span class="badge" title="Every decade watched">${TROPHY}${avg ? `★ ${avg.toFixed(1)}` : "Complete"}</span>` : ""}
+      </div>
+      <div class="strip" role="progressbar" aria-valuemin="0" aria-valuemax="${slots.length}" aria-valuenow="${watched}" aria-label="${esc(challengeTitle(c))} progress">
+        <div class="frames">${slots.map(d => `<span class="frame${c.picks[d] && entries.get(c.picks[d].id)?.watched ? " on" : ""}" title="${decadeLabel(d)}"></span>`).join("")}</div>
+      </div>
+      <div class="posters">${tiles}</div>
+      <div class="card-foot">
+        <span class="foot-left">${empty ? `<button class="linkbtn accent" type="button" data-fillrandom="${c.id}">Fill ${empty === 1 ? "the empty slot" : `${empty} empty slots`} at random</button>` : ""}</span>
+        <button class="linkbtn" type="button" data-removechal="${c.id}">Remove challenge</button></div>
+    </article>`;
+  }).join("") : `<div class="empty"><strong>No challenges yet</strong>Choose a span of decades above to start one.</div>`;
+  row.scrollLeft = scroll;
+}
+
+// Picker for one decade slot: popular films from that decade, a search, or a random pick.
+let slot = null;   // {cid, d, q, results, pool, seq}
+let slotTimer = null;
+async function openSlot(cid, d) {
+  const c = challenges.find(x => x.id === cid);
+  if (!c) return;
+  slot = { cid, d, q: "", results: null, pool: null, seq: 0 };
+  renderSlot();
+  $("slotBack").hidden = false;
+  lockScroll();
+  (matchMedia("(pointer: fine)").matches ? $("slotSearch") : $("slotClose")).focus();
+  let list = [];
+  try { list = await decadePool(d); } catch {}
+  if (slot?.cid === cid && slot.d === d) { slot.pool = list; renderSlotGrid(); }
+}
+function renderSlot() {
+  const c = challenges.find(x => x.id === slot.cid), cur = c.picks[slot.d];
+  $("slotBack").innerHTML = `<div class="sheet slot-sheet" role="dialog" aria-modal="true" aria-labelledby="slotTitle">
+    <div class="slot-top">
+      <div><span class="eyebrow">${esc(challengeTitle(c))}</span><h3 id="slotTitle">Pick a film from the ${decadeLabel(slot.d)}</h3></div>
+      <button class="btn primary" type="button" id="slotClose">Close</button>
+    </div>
+    <div class="add-row">
+      <input class="field" id="slotSearch" type="search" placeholder="Search the ${decadeLabel(slot.d)}" autocomplete="off" aria-label="Search films from the ${decadeLabel(slot.d)}">
+      <button class="btn" type="button" id="slotRandom">Random pick</button>
+    </div>
+    ${cur ? `<p class="hint">Current pick: ${esc(cur.t)} (${cur.y}) · <button class="linkbtn accent" type="button" id="slotClear">Empty this slot</button></p>` : ""}
+    <span class="recs-label" id="slotLabel"></span>
+    <div class="picker-grid" id="slotGrid"></div>
+  </div>`;
+  renderSlotGrid();
+}
+function renderSlotGrid() {
+  const c = challenges.find(x => x.id === slot.cid), cur = c.picks[slot.d];
+  const used = new Set(challengeFilms(c).map(f => f.id));
+  const searching = slot.q.length >= 2, list = searching ? slot.results : slot.pool;
+  $("slotLabel").textContent = searching ? "Search results" : `Well known from the ${decadeLabel(slot.d)}`;
+  $("slotGrid").innerHTML = !list ? `<p class="hint">${searching ? "Searching…" : "Loading films…"}</p>`
+    : !list.length ? `<p class="hint">${searching ? `No films from the ${decadeLabel(slot.d)} match “${esc(slot.q)}”.` : "TMDB didn't return any films."}</p>`
+    : list.map(f => {
+      const taken = used.has(f.id) && cur?.id !== f.id, seen = entries.get(f.id)?.watched;
+      return `<button class="pick${cur?.id === f.id ? " on" : ""}" type="button" data-slotpick="${f.id}" ${taken ? "disabled" : ""} title="${esc(f.t)} (${f.y})">
+        ${f.poster ? `<img src="${IMG}w185${f.poster}" alt="" loading="lazy">` : placeholder(f)}
+        ${taken ? `<span>In use</span>` : seen ? `<span>Seen</span>` : ""}<em class="pick-cap">${esc(f.t)} <small>${f.y}</small></em></button>`;
+    }).join("");
+}
+function onSlotSearch() {
+  const q = $("slotSearch").value.trim(), d = slot.d, seq = ++slot.seq;
+  slot.q = q; slot.results = null;
+  clearTimeout(slotTimer);
+  renderSlotGrid();
+  if (q.length < 2) return;
+  slotTimer = setTimeout(async () => {
+    let list = [];
+    try {
+      const pages = await Promise.all([1, 2].map(page => tmdb("/search/movie", { query: q, page })));
+      const byId = new Map();
+      for (const m of pages.flatMap(p => p.results || []))
+        if (decadeOf(+(m.release_date || "").slice(0, 4)) === d && m.release_date <= today() && !byId.has(m.id)) byId.set(m.id, snap(m));
+      list = [...byId.values()].sort((a, b) => b.votes - a.votes);
+    } catch {}
+    if (slot?.seq !== seq) return;
+    slot.results = list;
+    renderSlotGrid();
+  }, 300);
+}
+async function chooseSlot(film) {
+  const c = challenges.find(x => x.id === slot.cid), d = slot.d;
+  closeSlot();
+  if (film) await setPick(c, d, film);
+}
+function closeSlot() {
+  if (!slot) return;
+  slot = null;
+  clearTimeout(slotTimer);
+  $("slotBack").hidden = true; $("slotBack").innerHTML = "";
+  lockScroll();
+}
+
 // ---------- Suggested directors ----------
 let recs = [], recsTimer = null;
 function scheduleRecs() { clearTimeout(recsTimer); recsTimer = setTimeout(() => loadRecs().catch(() => {}), 2500); }
@@ -821,7 +1208,7 @@ async function loadRecs() {
   const rating = x => entries.get(x.f.id)?.rating || 3;
   // Up to three favourites from each director, so one director doesn't drown out the rest.
   const perDir = new Map();
-  for (const x of watchedFilms().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes)) {
+  for (const x of watchedFilms().filter(x => !x.d.kind).sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes)) {
     const l = perDir.get(x.d.id) || []; if (l.length < 3) l.push(x); perDir.set(x.d.id, l);
   }
   const seeds = [...perDir.values()].flat().sort((a, b) => rating(b) - rating(a) || b.f.votes - a.f.votes).slice(0, 12);
@@ -874,11 +1261,10 @@ function renderRecs() {
 // ---------- Screens ----------
 function showScreen(html) {
   $("screen").innerHTML = html;
-  const app = !html;
-  $("addPanel").hidden = !app || view !== "runs"; $("rowwrap").hidden = !app || view !== "runs";
-  $("trophyView").hidden = !app || view !== "trophies"; $("calView").hidden = !app || view !== "calendar";
-  $("footer").hidden = !app && !user;
-  if (!app) $("views").hidden = true;
+  appOn = !html;
+  $("footer").hidden = !appOn && !user;
+  applyView();
+  shelf();
 }
 
 function screenConfig() {
@@ -933,7 +1319,9 @@ async function start() {
 document.addEventListener("click", e => {
   if (tier && onTierClick(e)) return;
   if (e.target.id === "sheetBack") return closeSheet();
-  if (e.target.closest?.("#toast")) { $("toast").hidden = true; return $("toast").dataset.kind === "trophy" && setView("trophies"); }
+  if (e.target.id === "slotBack") return closeSlot();
+  if (e.target.closest?.("#toast")) { $("toast").hidden = true; if ($("toast").dataset.kind === "trophy") { statsTab = "trophies"; closeSheet(); setView("stats"); } return; }
+  if (e.target.closest?.("#homeLink")) { e.preventDefault(); return setView("home"); }
   const t = e.target.closest("button");
   if (!t) return;
   if (t.dataset.pick) { const p = searchResults[+t.dataset.pick]; return p && addDirector(p.name, p.ids); }
@@ -950,7 +1338,30 @@ document.addEventListener("click", e => {
   if (t.id === "pickerReset") return choosePoster("");
   if (t.dataset.poster) return choosePoster(t.dataset.poster);
   if (t.id === "sheetPrev" || t.id === "sheetNext") return stepSheet(t.id === "sheetNext" ? 1 : -1, t.id);
-  if (t.dataset.view) return setView(t.dataset.view);
+  if (t.dataset.go) return setView(t.dataset.go);
+  if (t.id === "statsBtn") return setView("stats");
+  if (t.dataset.stab) return setStatsTab(t.dataset.stab);
+  if (t.id === "decCreate") return createChallenge();
+  if (t.dataset.slot) { const [cid, d] = t.dataset.slot.split("|"); return openSlot(cid, +d); }
+  if (t.dataset.fillrandom) { const c = challenges.find(x => x.id === t.dataset.fillrandom); t.disabled = true; t.textContent = "Picking…"; return c && fillRandom(c); }
+  if (t.id === "slotClose") return closeSlot();
+  if (t.id === "slotClear") return setPick(challenges.find(x => x.id === slot.cid), slot.d, null).then(closeSlot);
+  if (t.id === "slotRandom" && slot) {
+    const c = challenges.find(x => x.id === slot.cid), d = slot.d;
+    t.disabled = true; t.textContent = "Picking…";
+    return randomPick(c, d).then(f => slot?.cid === c.id && slot.d === d && (f ? chooseSlot(f) : (t.textContent = "Nothing left to pick"))).catch(() => { t.textContent = "Couldn't reach TMDB"; });
+  }
+  if (t.dataset.slotpick && slot) { const id = +t.dataset.slotpick; return chooseSlot([...(slot.results || []), ...(slot.pool || [])].find(f => f.id === id)); }
+  if (t.id === "sheetSwap" && open) {
+    const src = sourceById(open.dir), d = decadesOf(src.c).find(x => src.c.picks[x]?.id === open.movie);
+    closeSheet();
+    return openSlot(src.c.id, d);
+  }
+  if (t.dataset.removechal) {
+    if (t.classList.contains("armed")) return removeChallenge(t.dataset.removechal);
+    t.classList.add("armed"); t.textContent = "Tap again to remove this challenge";
+    return setTimeout(() => { if (t.isConnected) { t.classList.remove("armed"); t.textContent = "Remove challenge"; } }, 4000);
+  }
   if (t.dataset.tieropen) return openTier(t.dataset.tieropen);
   if (t.dataset.calyear) { calYear = +t.dataset.calyear; calDay = null; return renderCalendar(); }
   if (t.dataset.day) { calDay = calDay === t.dataset.day ? null : t.dataset.day; return renderCalendar(); }
@@ -970,6 +1381,7 @@ document.addEventListener("click", e => {
   }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "decFrom" || e.target.id === "decTo") { decFrom = +$("decFrom").value; decTo = +$("decTo").value; return updateDecForm(); }
   if (e.target.id === "watchedOn" && open) return saveEntry(open.movie, { on: e.target.value });
   if (e.target.dataset.datefor && e.target.value) saveEntry(+e.target.dataset.datefor, { on: e.target.value });
 });
@@ -988,13 +1400,16 @@ document.addEventListener("drop", e => {
 });
 document.addEventListener("keydown", e => {
   if (tier) { if (e.key === "Escape") closeTier(); return; }
-  if (!open) { if (e.key === "Escape" && view !== "runs") setView("runs"); return; }
+  if (slot) { if (e.key === "Escape") closeSlot(); return; }
+  if (!open) { if (e.key === "Escape" && view !== "home" && !e.target.closest?.("input, select, textarea")) setView("home"); return; }
   if (e.key === "Escape") { if ($("picker")) { $("picker").remove(); $("sheetPoster")?.focus(); } else closeSheet(); return; }
   if ($("picker")) return;
   if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.id !== "noteInput") { e.preventDefault(); stepSheet(e.key === "ArrowRight" ? 1 : -1); }
   if (e.key === "Enter" && e.target.id === "noteInput" && !e.shiftKey) { e.preventDefault(); closeSheet(); }
 });
 $("search").addEventListener("input", onSearch);
+document.addEventListener("input", e => { if (e.target.id === "slotSearch" && slot) onSlotSearch(); });
+addEventListener("popstate", () => { closeSheet(); closeSlot(); closeTier(); setView(viewFromHash(), { push: false }); });
 // Swipe sideways on the film sheet to step through the director's films.
 let swipe = null;
 $("sheetBack").addEventListener("touchstart", e => { swipe = e.target.closest("textarea") ? null : { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
@@ -1005,9 +1420,8 @@ $("sheetBack").addEventListener("touchend", e => {
   if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) stepSheet(dx < 0 ? 1 : -1);
 }, { passive: true });
 $("cards").addEventListener("scroll", updateNav, { passive: true });
-// Drag the director row sideways with the mouse (touch screens already swipe natively).
-{
-  const row = $("cards");
+// Drag a card row sideways with the mouse (touch screens already swipe natively).
+function dragScroll(row) {
   let drag = null, glide = 0;
   row.addEventListener("pointerdown", e => {
     if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input, textarea")) return;
@@ -1047,15 +1461,18 @@ $("cards").addEventListener("scroll", updateNav, { passive: true });
   });
   row.addEventListener("dragstart", e => e.preventDefault());
 }
+dragScroll($("cards"));
+dragScroll($("decCards"));
 addEventListener("resize", updateNav);
 // Pick up changes made on another device when you come back to this tab.
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && user && tmdbToken && !open && !tier) loadData().catch(() => {}); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && user && tmdbToken && !open && !tier && !slot) loadData().catch(() => {}); });
 
 // ---------- Boot ----------
 (async () => {
   const cfg = window.DR_CONFIG || {};
   if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) return screenConfig();
   sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  view = viewFromHash();
   const { data } = await sb.auth.getSession();
   user = data.session?.user || null;
   sb.auth.onAuthStateChange((_event, session) => {

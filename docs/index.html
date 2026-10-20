@@ -37,11 +37,6 @@ header { padding-block: 28px 8px; display: flex; flex-wrap: wrap; align-items: f
 .brand h1 { font-family: var(--marquee); font-weight: 900; font-size: clamp(2.1rem, 9vw, 4rem); line-height: .9; letter-spacing: .01em; text-transform: uppercase; margin: 0; }
 .brand h1 span { color: var(--accent); }
 .brand p { margin: 8px 0 0; color: var(--muted); }
-.trophy-btn { flex: none; margin-top: 4px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px 9px 11px; border-radius: 99px; border: 1px solid rgba(240,181,74,.45); background: linear-gradient(180deg, rgba(240,181,74,.16), rgba(240,181,74,.04)); font-size: .88rem; font-weight: 600; white-space: nowrap; }
-.trophy-btn:hover { border-color: var(--accent); }
-.trophy-btn svg { width: 20px; height: 20px; color: var(--accent); filter: drop-shadow(0 0 6px rgba(240,181,74,.5)); }
-.trophy-btn b { font-family: var(--marquee); font-weight: 800; font-size: 1.2rem; line-height: 1; color: var(--accent); }
-@media (max-width: 480px) { .trophy-btn .tb-label { display: none; } }
 
 /* Trophy room */
 .trophy-view { padding-block: 18px 32px; }
@@ -252,14 +247,6 @@ html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: n
 footer { padding-block: 8px 28px; color: var(--muted); font-size: .78rem; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 footer img { height: 12px; }
 /* View switcher */
-.views { flex: none; margin-top: 4px; display: flex; gap: 2px; padding: 3px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); }
-.views button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border: none; border-radius: 99px; background: none; color: var(--muted); font-size: .86rem; font-weight: 600; white-space: nowrap; }
-.views button:hover { color: var(--fg); }
-.views button.on { background: var(--raise); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
-.views svg { width: 18px; height: 18px; }
-.views button[data-view="trophies"] svg { color: var(--accent); }
-.views b { font-family: var(--marquee); font-weight: 800; font-size: 1.1rem; line-height: 1; color: var(--accent); }
-@media (max-width: 640px) { .views .v-label { display: none; } .views button { padding: 8px 11px; } }
 
 /* Watch date in the film sheet */
 .take-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -347,23 +334,99 @@ button.day:hover { outline: 1px solid var(--fg); }
 .ud-row { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .ud-row .ud-title { flex: 1; min-width: 0; }
 .ud-row input { width: auto; }
+/* Header: home link and My stats */
+.brand h1 a { color: inherit; text-decoration: none; }
+.stats-btn { flex: none; margin-top: 4px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px 9px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); font-size: .88rem; font-weight: 600; white-space: nowrap; }
+.stats-btn:hover, .stats-btn.on { border-color: var(--accent); }
+.stats-btn svg { width: 18px; height: 18px; color: var(--accent); }
+.stats-btn b { font-family: var(--marquee); font-weight: 800; font-size: 1.15rem; line-height: 1; color: var(--accent); }
+.crumb { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; padding-block: 14px 0; }
+.crumb h2 { margin: 0; font-family: var(--marquee); font-weight: 800; font-size: 1.9rem; text-transform: uppercase; line-height: 1; }
+.crumb .back { font-size: .86rem; }
+.crumb .back:hover, .linkbtn.accent:hover { color: var(--fg); }
+.linkbtn.accent { color: var(--accent); }
+
+/* Home: one big card per challenge */
+.home { padding-block: 22px 40px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 20px; }
+.hcard { all: unset; box-sizing: border-box; cursor: pointer; position: relative; display: flex; align-items: flex-end; min-height: 380px; border-radius: 24px; overflow: hidden; background: linear-gradient(160deg, var(--raise), var(--surface)); border: 1px solid var(--line); box-shadow: 0 24px 50px -28px rgba(0,0,0,.9); transition: transform .2s, border-color .2s; }
+.hcard:hover { transform: translateY(-3px); border-color: var(--accent); }
+.hcard:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hbg { position: absolute; inset: 0; }
+.hbg img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s; }
+.hcard:hover .hbg img { transform: scale(1.04); }
+.hbg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(14,13,12,.05) 15%, rgba(14,13,12,.7) 58%, var(--surface)); }
+.hbody { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 6px; padding: 24px; }
+.hbody .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.hbody strong { font-family: var(--marquee); font-weight: 900; font-size: clamp(2.5rem, 8vw, 3.6rem); line-height: .9; text-transform: uppercase; }
+.hdesc { color: var(--fg); opacity: .88; }
+.hstats { font-family: var(--mono); font-size: .76rem; color: var(--muted); letter-spacing: .03em; }
+@media (max-width: 640px) { .hcard { min-height: 270px; } .hbody { padding: 20px; } }
+
+/* Decade challenges */
+.decades { padding-block: 16px 0; }
+.dec-new { max-width: 640px; display: flex; flex-direction: column; gap: 10px; }
+.dec-new label { display: flex; align-items: center; gap: 8px; font-size: .88rem; color: var(--muted); }
+.dec-new select { width: auto; padding-block: 10px; }
+.setup { margin-inline: 0; }
+.poster .art.slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; background: repeating-linear-gradient(135deg, var(--raise) 0 8px, #1c1916 8px 16px); box-shadow: inset 0 0 0 1.5px var(--line); }
+.poster .art.slot:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.slot-dec { font-family: var(--marquee); font-weight: 800; font-size: 1.1rem; text-transform: uppercase; line-height: 1; }
+.slot-plus { font-size: 1.6rem; line-height: 1; color: var(--accent); }
+.slot-hint { font-size: .66rem; color: var(--muted); }
+.sheet.slot-sheet { display: flex; flex-direction: column; gap: 12px; }
+.slot-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.slot-top h3 { margin: 4px 0 0; font-family: var(--marquee); font-weight: 800; font-size: 2rem; line-height: .95; text-transform: uppercase; }
+.pick:disabled { opacity: .35; cursor: default; }
+.pick-cap { position: absolute; inset: auto 0 0 0; padding: 20px 6px 6px; font-size: .68rem; font-weight: 600; font-style: normal; line-height: 1.15; background: linear-gradient(to top, rgba(14,13,12,.95) 45%, transparent); }
+.pick-cap small { font-family: var(--mono); font-weight: 400; color: var(--muted); }
+.pick .ph { font-size: .8rem; }
+@media (max-width: 640px) { .slot-top h3 { font-size: 1.6rem; } }
+
+/* My stats */
+.stats { padding-block: 16px 36px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); margin-bottom: 22px; }
+.seg button { border: none; background: none; color: var(--muted); padding: 8px 16px; border-radius: 99px; font-weight: 600; font-size: .88rem; }
+.seg button:hover { color: var(--fg); }
+.seg button.on { background: var(--raise); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.stats .trophy-view, .stats .cal-view { padding-block: 0; }
+.tsec + .tsec { margin-top: 34px; }
+.tv-title small { font-family: var(--mono); font-weight: 500; font-size: .85rem; color: var(--muted); margin-left: 10px; }
+.tsec .empty { max-width: 520px; }
+.medal > .ini.dec { display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.25rem; line-height: .95; color: var(--accent); }
+.medal > .ini.dec i { font-family: var(--mono); font-style: normal; font-size: .55rem; color: var(--muted); text-transform: uppercase; margin: 2px 0; }
+.dec-films { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dec-films .mini { width: 30px; height: 45px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap: 12px; margin-bottom: 18px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile b { font-family: var(--marquee); font-weight: 800; font-size: 2.4rem; line-height: 1; }
+.tile span { font-size: .86rem; overflow-wrap: anywhere; }
+.tile small { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+.chart h3 { margin: 0 0 12px; font-size: .95rem; }
+.bar-row { display: grid; grid-template-columns: 78px 1fr 30px; align-items: center; gap: 10px; padding: 4px 0; font-size: .84rem; }
+.bar-label { font-family: var(--mono); font-size: .74rem; color: var(--muted); white-space: nowrap; }
+.bar-track { height: 14px; display: flex; }
+.bar { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 3px; transition: filter .15s; }
+.bar-row:hover .bar { filter: brightness(1.2); }
+.bar-row:hover .bar-label { color: var(--fg); }
+.bar-val { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
 <body>
 <header class="gutter">
   <div class="brand">
-    <h1>Movie <span>Challenges</span></h1>
-    <p>Work through a filmography, one frame at a time.</p>
+    <h1><a href="./" id="homeLink">Movie <span>Challenges</span></a></h1>
+    <p>Pick a challenge. Watch the films.</p>
   </div>
-  <nav class="views" id="views" aria-label="Views" hidden>
-    <button type="button" data-view="runs" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1 2v2h2V5H5Zm12 0v2h2V5h-2ZM5 9v2h2V9H5Zm12 0v2h2V9h-2ZM5 13v2h2v-2H5Zm12 0v2h2v-2h-2ZM5 17v2h2v-2H5Zm12 0v2h2v-2h-2ZM9 5v14h6V5H9Z"/></svg><span class="v-label">Directors</span></button>
-    <button type="button" data-view="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2ZM5 9v10h14V9H5Zm2 2h3v3H7v-3Z"/></svg><span class="v-label">Calendar</span></button>
-    <button type="button" data-view="trophies"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10v2h4v3a5 5 0 0 1-4.6 5A6 6 0 0 1 13 15.9V18h3a2 2 0 0 1 2 2v2H6v-2a2 2 0 0 1 2-2h3v-2.1A6 6 0 0 1 7.6 12 5 5 0 0 1 3 7V4h4V2Zm0 4H5v1a3 3 0 0 0 2 2.8V6Zm10 0v3.8A3 3 0 0 0 19 7V6h-2Z"/></svg><span class="v-label">Trophies</span><b id="trophyCount">0</b></button>
-  </nav>
+  <button class="stats-btn" type="button" id="statsBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20V10h3v10H4Zm6.5 0V4h3v16h-3ZM17 20v-7h3v7h-3Z"/></svg><span>My stats</span><b id="trophyCount">0</b></button>
 </header>
 
 <main id="screen"></main>
+<section class="gutter home" id="homeView" hidden></section>
+<div class="gutter crumb" id="crumb" hidden></div>
 
 <section class="addbar gutter" id="addPanel" hidden>
   <div class="add-row">
@@ -381,8 +444,19 @@ button.day:hover { outline: 1px solid var(--fg); }
   <button class="nav next" type="button" id="nextBtn" hidden aria-label="Scroll right">›</button>
 </div>
 
-<section class="gutter trophy-view" id="trophyView" hidden></section>
-<section class="gutter cal-view" id="calView" hidden></section>
+<section class="gutter decades" id="decView" hidden><div id="decNew"></div></section>
+<div class="rowwrap" id="decWrap" hidden><div class="row" id="decCards"></div></div>
+
+<section class="gutter stats" id="statsView" hidden>
+  <div class="seg" role="tablist" aria-label="My stats">
+    <button type="button" role="tab" data-stab="trophies">Trophies</button>
+    <button type="button" role="tab" data-stab="numbers">Stats</button>
+    <button type="button" role="tab" data-stab="calendar">Calendar</button>
+  </div>
+  <div class="trophy-view" id="trophyView"></div>
+  <div class="numbers" id="numbersView" hidden></div>
+  <div class="cal-view" id="calView" hidden></div>
+</section>
 
 <footer class="gutter" id="footer" hidden>
   <span>Film data and images from <a href="https://www.themoviedb.org" style="color:inherit">TMDB</a>. This site uses the TMDB API but is not endorsed or certified by TMDB.</span>
@@ -391,10 +465,11 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <div class="sheet-back" id="sheetBack" hidden></div>
 <div class="sheet-back" id="tierBack" hidden></div>
+<div class="sheet-back" id="slotBack" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

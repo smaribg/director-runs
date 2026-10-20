@@ -1,4 +1,4 @@
--- Director Runs: run this once in Supabase → SQL Editor → New query → Run.
+-- Movie Challenges: run this once in Supabase → SQL Editor → New query → Run.
 -- Every row belongs to the signed-in user; row level security keeps it private to them.
 
 create table if not exists public.directors (
@@ -32,6 +32,16 @@ alter table public.entries add column if not exists watched_on date;
 alter table public.directors add column if not exists tiers jsonb;
 alter table public.directors add column if not exists position integer;
 
+create table if not exists public.challenges (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  kind text not null default 'decades',
+  start_decade integer not null,          -- 1910 stands for everything before 1920
+  end_decade integer not null,
+  picks jsonb not null default '{}',      -- one film per decade: {"1970": {id, t, y, poster, ...}}
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users on delete cascade,
   tmdb_token text,
@@ -41,10 +51,13 @@ create table if not exists public.settings (
 alter table public.directors enable row level security;
 alter table public.entries enable row level security;
 alter table public.settings enable row level security;
+alter table public.challenges enable row level security;
 
 drop policy if exists "own directors" on public.directors;
 drop policy if exists "own entries" on public.entries;
 drop policy if exists "own settings" on public.settings;
+drop policy if exists "own challenges" on public.challenges;
 create policy "own directors" on public.directors for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "own entries" on public.entries for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "own settings" on public.settings for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own challenges" on public.challenges for all using (user_id = auth.uid()) with check (user_id = auth.uid());
