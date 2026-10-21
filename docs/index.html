@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Movie Challenges</title>
 <meta name="theme-color" content="#0e0d0c">
 <link rel="icon" type="image/png" href="favicon.png?v=2">
@@ -26,6 +26,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+html { touch-action: manipulation; }
 [hidden] { display: none !important; }
 body { background: radial-gradient(120% 60% at 50% -10%, var(--bg-glow), var(--bg) 70%) fixed, var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45; min-height: 100vh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 img { max-width: 100%; }
@@ -474,6 +475,6 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
