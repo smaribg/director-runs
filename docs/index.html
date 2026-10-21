@@ -341,10 +341,11 @@ button.day:hover { outline: 1px solid var(--fg); }
 .stats-btn:hover, .stats-btn.on { border-color: var(--accent); }
 .stats-btn svg { width: 18px; height: 18px; color: var(--accent); }
 .stats-btn b { font-family: var(--marquee); font-weight: 800; font-size: 1.15rem; line-height: 1; color: var(--accent); }
-.crumb { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; padding-block: 14px 0; }
+.crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; padding-block: 16px 0; }
 .crumb h2 { margin: 0; font-family: var(--marquee); font-weight: 800; font-size: 1.9rem; text-transform: uppercase; line-height: 1; }
-.crumb .back { font-size: .86rem; }
-.crumb .back:hover, .linkbtn.accent:hover { color: var(--fg); }
+.crumb .back { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px 10px 14px; border-radius: 99px; font-size: .95rem; }
+.crumb .back span { font-size: 1.3rem; line-height: 1; margin-top: -2px; }
+.linkbtn.accent:hover { color: var(--fg); }
 .linkbtn.accent { color: var(--accent); }
 
 /* Home: one big card per challenge */
@@ -471,6 +472,6 @@ button.day:hover { outline: 1px solid var(--fg); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js?v=5"></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

@@ -330,7 +330,7 @@ function applyView() {
   $("decView").hidden = off("decades"); $("decWrap").hidden = off("decades");
   $("statsView").hidden = off("stats");
   $("crumb").hidden = !appOn || view === "home";
-  $("crumb").innerHTML = `<button class="linkbtn back" type="button" data-go="home">‹ All challenges</button><h2>${VIEW_TITLES[view] || ""}</h2>`;
+  $("crumb").innerHTML = `<button class="btn back" type="button" data-go="home"><span>‹</span> All challenges</button><h2>${VIEW_TITLES[view] || ""}</h2>`;
   document.title = VIEW_TITLES[view] ? `${VIEW_TITLES[view]} · Movie Challenges` : "Movie Challenges";
 }
 
